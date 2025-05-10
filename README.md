@@ -110,4 +110,4 @@ Just open `index.html` in your browser (Google Chrome recommended).
 
 ## Credits
 
-Research conducted at the **University of Utah**, Scientific Computing and Imaging (SCI) Institute, under the guidance of **Dr. Paul Rosen**.
+Project developed at the **University of Utah**, Scientific Computing and Imaging (SCI) Institute, under the guidance of **Dr. Paul Rosen**.
