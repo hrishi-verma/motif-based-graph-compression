@@ -1,4 +1,4 @@
-# Graph Motif Compression via Wasserstein Clustering
+# Graph Motif Compression
 
 This project explores **graph simplification** through **motif clustering**, using Wasserstein distance to group structurally similar subgraphs (motifs). It enables users to interactively visualize large networks by replacing repeated substructures with supernodes—without compromising structural integrity.
 
