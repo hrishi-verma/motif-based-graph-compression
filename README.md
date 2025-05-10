@@ -82,9 +82,10 @@ Just open `index.html` in your browser (Google Chrome recommended).
 
 ---
 
-##  Demo
+## Demo
 
-[https://user-images.githubusercontent.com/your-github-id/demo-video.mp4](https://user-images.githubusercontent.com/your-github-id/demo-video.mp4)
+![Demo Animation](demo.gif)
+
 
 *Video: Watch a complex Facebook network get compressed into interpretable structures using similarity threshold tuning.*
 
