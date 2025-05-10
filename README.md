@@ -84,8 +84,7 @@ Just open `index.html` in your browser (Google Chrome recommended).
 
 ## Demo
 
-![Demo Animation](demo.gif)
-
+<img src="demo.gif" alt="Demo Animation" width="800"/>
 
 *Video: Watch a complex Facebook network get compressed into interpretable structures using similarity threshold tuning.*
 
