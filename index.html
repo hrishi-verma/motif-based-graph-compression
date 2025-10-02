@@ -16,7 +16,7 @@
 
     #graph-container {
       width: 100%;
-      height: 40vh;
+      height: 60vh;
       border: 1px solid #999;
       margin-top: 10px;
     }
@@ -228,7 +228,7 @@
     .then(res => res.json())
     .then(data => {
       document.getElementById("stats-content").innerHTML = `
-        <!-- Original motifs: ${data.original_motifs}<br/> -->
+        Original motifs: ${data.original_motifs}<br/>
         <!-- After threshold ${threshold.toFixed(2)} → ${data.supernodes} supernodes<br/> -->
         Compression: ${data.compression_percent}%
       `;
@@ -394,6 +394,7 @@
         .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0))
         .on("click", (event, d) => {
           if (d.nodes_in_cluster) {
+            console.log('llalaa')
             fetch(`http://127.0.0.1:5000/motif/${d.id}`)
               .then(res => res.json())
               .then(motif => expandMotifGraph(motif, d, color));

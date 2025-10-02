@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Graph Compression via Agglomerative Clustering</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            text-align: center;
+        }
+
+
+        #graph-container {
+            width: 100%;
+            height: 60vh;
+            border: 1px solid #999;
+            margin-top: 10px;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node-label {
+            font-size: 10px;
+            fill: black;
+        }
+
+        #threshold-control {
+            margin-top: 20px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 6px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        circle.main-node.highlighted {
+            filter: drop-shadow(0 0 6px #ff0) brightness(1.8);
+            stroke: #ff0;
+            stroke-width: 3;
+            stroke-opacity: 1;
+        }
+
+        #thresholdInput {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 200px;
+            height: 6px;
+            background: #ddd;
+            border-radius: 4px;
+            outline: none;
+            transition: background 0.3s ease;
+        }
+
+        #thresholdInput::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4285f4;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(66, 133, 244, 0.8);
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        #thresholdInput::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4285f4;
+            border: none;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(66, 133, 244, 0.8);
+            cursor: pointer;
+        }
+
+        /* Play button */
+        #playButton {
+            margin-left: 10px;
+            background-color: #fff;
+            border: 1px solid #bbb;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        #playButton:hover {
+            background-color: #f0f0f0;
+            transform: scale(1.05);
+        }
+
+        #cluster-views>div {
+            border-radius: 12px;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+
+        #cluster-views>div:hover {
+            transform: scale(1.02);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="top-fixed-area" style="position: sticky; top: 0; z-index: 10; background: white;">
+        <h2>Graph Compression via Agglomerative Clustering</h2>
+        <div id="control-panel"
+            style="display: flex; justify-content: center; align-items: flex-start; gap: 20px; margin-top: 10px;">
+            <div id="threshold-control" style="text-align: left;">
+                <label for="thresholdInput">Set Similarity Threshold:</label><br />
+                <input type="range" id="thresholdInput" min="0" max="100" step="1" value="0"
+                    oninput="showThresholdValue(this.value)" onchange="updateThreshold(this.value)" />
+                <span id="thresholdValue">0</span>
+                <button id="playButton" onclick="togglePlay()">▶️</button>
+            </div>
+
+
+            <div id="compression-stats"
+                style="padding: 10px; border: 1px solid #ccc; background: #f9f9f9; font-size: 14px;">
+                <strong>Graph Info:</strong>
+                <div id="stats-content" style="margin-top: 6px;"></div>
+            </div>
+        </div>
+
+
+        <div id="graph-container">
+            <svg id="graph"></svg>
+            <div id="tooltip" class="tooltip" style="opacity: 0;"></div>
+        </div>
+    </div>
+
+
+    <div id="cluster-scroll-wrapper" style="height: 40vh; overflow-y: auto; border-top: 1px solid #aaa; padding: 10px;">
+        <div id="cluster-views" style="display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 10px;">
+        </div>
+    </div>
+
+
+    <script>
+        const svg = d3.select("#graph");
+        const g = svg.append("g");
+        let threshold = 0;
+        let currentNodes = [];
+        let currentLinks = [];
+        let simulation;
+
+        const zoom = d3.zoom().scaleExtent([0.1, 3]).on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        });
+        svg.call(zoom);
+
+        const tooltip = d3.select("#tooltip");
+        let isPlaying = false;
+        let playInterval;
+
+        function togglePlay() {
+            const btn = document.getElementById("playButton");
+            const slider = document.getElementById("thresholdInput");
+
+            if (!isPlaying) {
+                btn.textContent = "⏸️";
+                isPlaying = true;
+                playInterval = setInterval(() => {
+                    let current = parseInt(slider.value);
+                    if (current >= parseInt(slider.max)) {
+                        togglePlay(); // stop
+                    } else {
+                        slider.value = current + 1;
+                        updateThreshold(slider.value);
+                    }
+                }, 1500); // adjust speed here (milliseconds)
+            } else {
+                btn.textContent = "▶️";
+                isPlaying = false;
+                clearInterval(playInterval);
+            }
+        }
+
+
+        function updateThreshold(sliderValue) {
+            sliderValue = parseFloat(sliderValue);
+            const maxSlider = 100;
+            const base = 10;
+
+            if (isNaN(sliderValue)) return;
+
+            const normalized = sliderValue / maxSlider;
+            threshold = Math.pow(base, normalized) - 1;
+
+            document.getElementById("thresholdValue").textContent = threshold.toFixed(2);
+            fetchGraph();
+            updateCompressionStats();
+        }
+
+
+        function showThresholdValue(value) {
+            const maxSlider = 100;
+            const base = 10;
+            const normalized = value / maxSlider;
+            const preview = Math.pow(base, normalized) - 1;
+
+            document.getElementById("thresholdValue").textContent = preview.toFixed(2);
+        }
+
+
+
+        function fetchGraph() {
+            d3.json(`http://127.0.0.1:5000/processed_edges?threshold=${threshold}`)
+                .then(drawGraph)
+                .catch((err) => console.error("Graph loading failed:", err));
+        }
+        function updateCompressionStats() {
+            fetch(`http://127.0.0.1:5000/compression_stats?threshold=${threshold}`)
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("stats-content").innerHTML = `
+        Original motifs: ${data.original_motifs}<br/>
+        <!-- After threshold ${threshold.toFixed(2)} → ${data.supernodes} supernodes<br/> -->
+        Compression: ${data.compression_percent}%
+      `;
+                });
+        }
+
+
+        function drawGraph(graphData) {
+            g.selectAll("*").remove();
+            d3.select("#cluster-views").html("");
+
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+            currentNodes = [...graphData.nodes];
+            currentLinks = [...graphData.links];
+
+            // Draw main graph
+            simulation = d3.forceSimulation(currentNodes)
+                .force("link", d3.forceLink(currentLinks).id(d => d.id).distance(80))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(600, 400));
+
+            drawElements(color);
+
+            const currentThreshold = threshold.toFixed(2);
+
+            fetch(`http://127.0.0.1:5000/unique_motifs?threshold=${currentThreshold}`)
+                .then(res => res.json())
+                .then(motifs => {
+                    motifs.forEach((motif, i) => {
+                        // const motifNodes = new Set(motif.nodes.map(d => d.toString()));
+                        const highlightSet = new Set(motif.all_nodes.map(d => d.toString()))
+
+
+                        const clusterBox = d3.select("#cluster-views")
+                            .append("div")
+                            .style("position", "relative")
+                            .style("margin", "8px")
+                            .style("border", "1px solid #ccc")
+                            .style("width", "200px")
+                            .style("height", "220px")
+
+                            .on("mouseover", () => {
+                                d3.selectAll("circle.main-node").each(function (d) {
+                                    if (d.nodes_in_cluster) {
+                                        const shared = d.nodes_in_cluster.some(n => highlightSet.has(n.toString()));
+                                        d3.select(this).classed("highlighted", shared);
+                                    }
+                                });
+                            })
+                            .on("mouseout", () => {
+                                d3.selectAll("circle.main-node").classed("highlighted", false);
+                            });
+
+
+
+                        clusterBox.append("div")
+                            .text(`×${motif.count}`)
+                            .style("position", "absolute")
+                            .style("top", "5px")
+                            .style("right", "8px")
+                            .style("background", "#f06")
+                            .style("color", "white")
+                            .style("font-size", "12px")
+                            .style("padding", "2px 6px")
+                            .style("border-radius", "10px");
+
+                        const clusterSvg = clusterBox.append("svg")
+                            .attr("width", 200)
+                            .attr("height", 200);
+
+                        const clusterG = clusterSvg.append("g");
+
+                        const zoom = d3.zoom()
+                            .scaleExtent([0.5, 4])
+                            .on("zoom", (event) => {
+                                clusterG.attr("transform", event.transform);
+                            });
+                        clusterSvg.call(zoom);
+
+                        const subNodes = motif.nodes.map(id => ({ id }));
+                        const matrix = motif.adjacency_matrix;
+
+                        const nodeMap = new Map(subNodes.map(n => [n.id, n]));
+                        const links = [];
+                        for (let i = 0; i < matrix.length; i++) {
+                            for (let j = i + 1; j < matrix.length; j++) {
+                                const weight = matrix[i][j];
+                                if (weight !== 0) {
+                                    links.push({
+                                        source: nodeMap.get(subNodes[i].id),
+                                        target: nodeMap.get(subNodes[j].id),
+                                        weight
+                                    });
+                                }
+                            }
+                        }
+
+                        const sim = d3.forceSimulation(subNodes)
+                            .force("link", d3.forceLink(links).id(d => d.id).distance(40))
+                            .force("charge", d3.forceManyBody().strength(-50))
+                            .force("center", d3.forceCenter(100, 100))
+                            .on("tick", () => {
+                                clusterG.selectAll("*").remove();
+
+                                clusterG.selectAll("line")
+                                    .data(links)
+                                    .enter().append("line")
+                                    .attr("x1", d => d.source.x)
+                                    .attr("y1", d => d.source.y)
+                                    .attr("x2", d => d.target.x)
+                                    .attr("y2", d => d.target.y)
+                                    .attr("stroke", "#999");
+
+                                clusterG.selectAll("circle")
+                                    .data(subNodes)
+                                    .enter().append("circle")
+                                    .attr("cx", d => d.x)
+                                    .attr("cy", d => d.y)
+                                    .attr("r", 4)
+                                    .attr("fill", "#888");
+                            });
+                    });
+
+                });
+
+
+        }
+
+
+        function drawElements(color) {
+            const link = g.append("g")
+                .selectAll("line")
+                .data(currentLinks, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+
+            link.exit().transition().duration(400).style("opacity", 0).remove();
+
+            link.enter().append("line")
+                .attr("stroke", "#999")
+                .attr("stroke-width", 1)
+                .merge(link);
+
+            const node = g.append("g")
+                .selectAll("circle")
+                .data(currentNodes, d => d.id);
+
+            node.exit().transition().duration(400)
+                .attr("r", 0)
+                .style("opacity", 0)
+                .remove();
+
+            const enteredNodes = node.enter().append("circle")
+                .attr("class", "main-node")
+                .attr("r", 0)
+                .attr("fill", d => d.nodes_in_cluster ? color(d.cluster_id) : "orange")
+                .on("mouseover", (event, d) => {
+                    if (d.nodes_in_cluster) {
+                        tooltip.transition().duration(200).style("opacity", .9);
+                        tooltip.html("Cluster: " + d.cluster_id + "<br/>Members: " + d.nodes_in_cluster.join(", "))
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    }
+                })
+                .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0))
+                .on("click", (event, d) => {
+                    if (d.nodes_in_cluster) {
+                        console.log('llalaa')
+                        fetch(`http://127.0.0.1:5000/motif/${d.id}`)
+                            .then(res => res.json())
+                            .then(motif => expandMotifGraph(motif, d, color));
+                    }
+                });
+
+            enteredNodes.transition().duration(500)
+                .attr("r", d => d.nodes_in_cluster ? 8 : 5);
+
+            const mergedNodes = enteredNodes.merge(node);
+
+            const label = g.append("g")
+                .selectAll("text")
+                .data(currentNodes, d => d.id);
+
+            label.exit().remove();
+
+            const enteredLabels = label.enter().append("text")
+                .attr("class", "node-label")
+                .attr("dy", -12)
+                .attr("text-anchor", "middle")
+                .text(d => d.id);
+
+            const mergedLabels = enteredLabels.merge(label);
+
+            simulation.on("tick", () => {
+                g.selectAll("line")
+                    .attr("x1", d => (d.source.x))
+                    .attr("y1", d => (d.source.y))
+                    .attr("x2", d => (d.target.x))
+                    .attr("y2", d => (d.target.y));
+
+                mergedNodes
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                mergedLabels
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            });
+        }
+
+
+        function expandMotifGraph(motif, parentNode, color) {
+            const motifNodes = motif.nodes;
+            const matrix = motif.adjacency_matrix;
+
+            const newNodeSet = new Set(motifNodes.map(id => id.toString()));
+            const existingNodeSet = new Set(currentNodes.map(n => n.id.toString()));
+
+            const addedNodes = motifNodes.filter(id => !existingNodeSet.has(id.toString()))
+                .map(id => ({
+                    id: id,
+                    cluster_id: parentNode.cluster_id
+                }));
+            currentNodes.push(...addedNodes);
+
+            const links = [];
+            for (let i = 0; i < matrix.length; i++) {
+                for (let j = i + 1; j < matrix.length; j++) {
+                    const weight = matrix[i][j];
+                    if (weight !== 0) {
+                        links.push({
+                            source: motifNodes[i],
+                            target: motifNodes[j],
+                            weight: weight
+                        });
+                    }
+                }
+            }
+
+            const addedLinks = links.filter(link => {
+                return !currentLinks.some(existing =>
+                    (existing.source.id || existing.source) === link.source &&
+                    (existing.target.id || existing.target) === link.target
+                );
+            });
+
+            currentLinks.push(...addedLinks);
+
+            simulation.nodes(currentNodes);
+            simulation.force("link").links(currentLinks);
+            simulation.alpha(1).restart();
+
+            g.selectAll("*").remove();
+            drawElements(color);
+        }
+
+        updateThreshold(document.getElementById("thresholdInput").value);
+
+    </script>
+</body>
+
+</html>

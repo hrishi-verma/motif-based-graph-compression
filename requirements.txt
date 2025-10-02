@@ -1,5 +1,5 @@
-flask
-flask_core
+Flask
+Flask-Cors
 pandas
 networkx
 scikit-learn

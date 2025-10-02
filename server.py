@@ -71,6 +71,44 @@ for pair, dist in wasserstein_data.items():
     dist_matrix[j][i] = dist
 np.fill_diagonal(dist_matrix, 0.0)  # Distance from node to itself is always 0
 
+def build_connected_clusters(labels):
+    """
+    Build cluster mapping ensuring each cluster is a connected component.
+    
+    Takes clustering labels and splits any disconnected clusters into 
+    their connected components to ensure visual coherence.
+    
+    Args:
+        labels: Array of cluster labels from AgglomerativeClustering
+        
+    Returns:
+        dict: cluster_id -> list of connected node IDs
+    """
+    # Build initial cluster mapping
+    initial_cluster_map = {}
+    for idx, label in enumerate(labels):
+        initial_cluster_map.setdefault(label, []).append(index_node[idx])
+    
+    # Split disconnected clusters into connected components
+    cluster_map = {}
+    cluster_counter = 0
+    
+    for original_cluster_id, nodes in initial_cluster_map.items():
+        if len(nodes) == 1:
+            # Single node clusters are always connected
+            cluster_map[cluster_counter] = nodes
+            cluster_counter += 1
+        else:
+            # Check connectivity and split if necessary
+            subgraph = G.subgraph(nodes)
+            components = list(nx.connected_components(subgraph))
+            
+            for component in components:
+                cluster_map[cluster_counter] = list(component)
+                cluster_counter += 1
+    
+    return cluster_map
+
 @app.route('/processed_edges')
 def get_processed_graph():
     """
@@ -102,32 +140,8 @@ def get_processed_graph():
     )
     labels = model.fit_predict(dist_matrix)
 
-    # Group nodes by cluster labels
-    cluster_map = {}
-    for idx, label in enumerate(labels):
-        cluster_map.setdefault(label, []).append(index_node[idx])
-    
-    # Split disconnected clusters into connected components
-    # This ensures each cluster represents a connected subgraph
-    connected_clusters = {}
-    cluster_counter = 0
-    
-    for original_cluster_id, nodes in cluster_map.items():
-        if len(nodes) == 1:
-            # Single node clusters are always connected
-            connected_clusters[cluster_counter] = nodes
-            cluster_counter += 1
-        else:
-            # Check connectivity and split if necessary
-            subgraph = G.subgraph(nodes)
-            components = list(nx.connected_components(subgraph))
-            
-            for component in components:
-                connected_clusters[cluster_counter] = list(component)
-                cluster_counter += 1
-    
-    # Update cluster_map to use connected clusters
-    cluster_map = connected_clusters
+    # Group nodes by cluster labels and ensure connectivity
+    cluster_map = build_connected_clusters(labels)
 
     # Create supernodes (cluster representatives) and mapping
     # Each cluster is represented by a single "supernode" for visualization
@@ -199,25 +213,7 @@ def get_cluster_subgraph(cluster_id):
     labels = model.fit_predict(dist_matrix)
 
     # Build cluster mapping and ensure connectivity
-    initial_cluster_map = {}
-    for idx, label in enumerate(labels):
-        initial_cluster_map.setdefault(label, []).append(index_node[idx])
-    
-    # Split disconnected clusters into connected components
-    cluster_map = {}
-    cluster_counter = 0
-    
-    for original_cluster_id, nodes in initial_cluster_map.items():
-        if len(nodes) == 1:
-            cluster_map[cluster_counter] = nodes
-            cluster_counter += 1
-        else:
-            subgraph = G.subgraph(nodes)
-            components = list(nx.connected_components(subgraph))
-            
-            for component in components:
-                cluster_map[cluster_counter] = list(component)
-                cluster_counter += 1
+    cluster_map = build_connected_clusters(labels)
 
     if cluster_id not in cluster_map:
         return jsonify({"error": "Cluster not found"}), 404
@@ -276,9 +272,7 @@ def get_motif(node_id):
         )
         labels = model.fit_predict(dist_matrix)
 
-        cluster_map = {}
-        for idx, label in enumerate(labels):
-            cluster_map.setdefault(label, []).append(index_node[idx])
+        cluster_map = build_connected_clusters(labels)
 
         # Find which cluster contains the requested node
         # Linear search through clusters - could be optimized with reverse mapping
@@ -335,9 +329,7 @@ def get_unique_motifs():
     )
     labels = model.fit_predict(dist_matrix)
 
-    cluster_map = {}
-    for idx, label in enumerate(labels):
-        cluster_map.setdefault(label, []).append(index_node[idx])
+    cluster_map = build_connected_clusters(labels)
 
     # Find unique structural patterns using graph isomorphism
     # This identifies clusters that have identical connectivity patterns

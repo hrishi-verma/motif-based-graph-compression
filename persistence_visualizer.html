@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persistence Diagram Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .control-group label {
+            font-weight: 500;
+            color: #555;
+        }
+        
+        select, input[type="range"] {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        
+        #persistence-diagram {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin: 20px auto;
+            display: block;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .axis-label {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .grid-line {
+            stroke: #e0e0e0;
+            stroke-dasharray: 2,2;
+        }
+        
+        .diagonal-line {
+            stroke: #999;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Persistence Diagram - Facebook Graph Motifs</h1>
+            <p>Topological Data Analysis of Maximum Spanning Trees</p>
+        </div>
+        
+        <div class="stats" id="stats">
+            <!-- Stats will be populated by JavaScript -->
+        </div>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="dimension-filter">Dimension:</label>
+                <select id="dimension-filter">
+                    <option value="all">All Dimensions</option>
+                    <option value="0">H₀ (Components)</option>
+                    <option value="1">H₁ (Cycles)</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="persistence-threshold">Min Persistence:</label>
+                <input type="range" id="persistence-threshold" min="0" max="50" value="0" step="1">
+                <span id="threshold-value">0</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="point-size">Point Size:</label>
+                <input type="range" id="point-size" min="2" max="10" value="4" step="1">
+            </div>
+        </div>
+        
+        <svg id="persistence-diagram"></svg>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #3498db;"></div>
+                <span>H₀ (Connected Components)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #e74c3c;"></div>
+                <span>H₁ (Cycles)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: #27ae60; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 16px solid #27ae60; border-radius: 0;"></div>
+                <span>Infinite Persistence</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PersistenceDiagramVisualizer {
+            constructor() {
+                this.data = null;
+                this.filteredData = null;
+                this.svg = null;
+                this.width = 800;
+                this.height = 600;
+                this.margin = { top: 40, right: 40, bottom: 60, left: 60 };
+                this.tooltip = null;
+                
+                this.setupSVG();
+                this.setupTooltip();
+                this.setupControls();
+                this.loadData();
+            }
+            
+            setupSVG() {
+                this.svg = d3.select('#persistence-diagram')
+                    .attr('width', this.width)
+                    .attr('height', this.height);
+            }
+            
+            setupTooltip() {
+                this.tooltip = d3.select('body')
+                    .append('div')
+                    .attr('class', 'tooltip')
+                    .style('opacity', 0);
+            }
+            
+            setupControls() {
+                const dimensionFilter = d3.select('#dimension-filter');
+                const persistenceThreshold = d3.select('#persistence-threshold');
+                const pointSize = d3.select('#point-size');
+                const thresholdValue = d3.select('#threshold-value');
+                
+                dimensionFilter.on('change', () => this.updateVisualization());
+                persistenceThreshold.on('input', () => {
+                    thresholdValue.text(persistenceThreshold.property('value'));
+                    this.updateVisualization();
+                });
+                pointSize.on('input', () => this.updateVisualization());
+            }
+            
+            async loadData() {
+                try {
+                    const response = await fetch('data/persistence_coordinates.json');
+                    this.data = await response.json();
+                    this.updateStats();
+                    this.updateVisualization();
+                } catch (error) {
+                    console.error('Error loading data:', error);
+                    this.showError('Failed to load persistence data. Please ensure the data file exists.');
+                }
+            }
+            
+            updateStats() {
+                if (!this.data) return;
+                
+                const stats = d3.select('#stats');
+                stats.html(`
+                    <div class="stat-item">
+                        <div class="stat-value">${this.data.metadata.total_points}</div>
+                        <div class="stat-label">Total Points</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${this.data.metadata.component_points}</div>
+                        <div class="stat-label">H₀ Points</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${this.data.metadata.cycle_points}</div>
+                        <div class="stat-label">H₁ Points</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">${this.data.metadata.motif_count}</div>
+                        <div class="stat-label">Motifs</div>
+                    </div>
+                `);
+            }
+            
+            filterData() {
+                if (!this.data) return [];
+                
+                const dimensionFilter = d3.select('#dimension-filter').property('value');
+                const persistenceThreshold = +d3.select('#persistence-threshold').property('value');
+                
+                return this.data.points.filter(d => {
+                    const dimensionMatch = dimensionFilter === 'all' || d.dimension.toString() === dimensionFilter;
+                    const persistenceMatch = d.persistence === -1 || d.persistence >= persistenceThreshold;
+                    return dimensionMatch && persistenceMatch;
+                });
+            }
+            
+            updateVisualization() {
+                if (!this.data) return;
+                
+                this.filteredData = this.filterData();
+                
+                // Clear previous visualization
+                this.svg.selectAll('*').remove();
+                
+                // Set up scales
+                const finitePoints = this.filteredData.filter(d => d.persistence !== -1);
+                const infinitePoints = this.filteredData.filter(d => d.persistence === -1);
+                
+                if (finitePoints.length === 0 && infinitePoints.length === 0) {
+                    this.showNoData();
+                    return;
+                }
+                
+                const xExtent = d3.extent([...finitePoints, ...infinitePoints], d => d.x);
+                const yExtent = d3.extent([...finitePoints, ...infinitePoints], d => d.y);
+                
+                // Extend ranges slightly
+                const xRange = xExtent[1] - xExtent[0];
+                const yRange = yExtent[1] - yExtent[0];
+                const padding = Math.max(xRange, yRange) * 0.1;
+                
+                const xScale = d3.scaleLinear()
+                    .domain([xExtent[0] - padding, xExtent[1] + padding])
+                    .range([this.margin.left, this.width - this.margin.right]);
+                
+                const yScale = d3.scaleLinear()
+                    .domain([yExtent[0] - padding, yExtent[1] + padding])
+                    .range([this.height - this.margin.bottom, this.margin.top]);
+                
+                // Add grid lines
+                this.addGridLines(xScale, yScale);
+                
+                // Add diagonal line (y = x)
+                this.addDiagonalLine(xScale, yScale);
+                
+                // Add axes
+                this.addAxes(xScale, yScale);
+                
+                // Add points
+                this.addPoints(xScale, yScale);
+            }
+            
+            addGridLines(xScale, yScale) {
+                const xTicks = xScale.ticks(8);
+                const yTicks = yScale.ticks(8);
+                
+                // Vertical grid lines
+                this.svg.selectAll('.grid-line-x')
+                    .data(xTicks)
+                    .enter()
+                    .append('line')
+                    .attr('class', 'grid-line grid-line-x')
+                    .attr('x1', d => xScale(d))
+                    .attr('x2', d => xScale(d))
+                    .attr('y1', this.margin.top)
+                    .attr('y2', this.height - this.margin.bottom);
+                
+                // Horizontal grid lines
+                this.svg.selectAll('.grid-line-y')
+                    .data(yTicks)
+                    .enter()
+                    .append('line')
+                    .attr('class', 'grid-line grid-line-y')
+                    .attr('x1', this.margin.left)
+                    .attr('x2', this.width - this.margin.right)
+                    .attr('y1', d => yScale(d))
+                    .attr('y2', d => yScale(d));
+            }
+            
+            addDiagonalLine(xScale, yScale) {
+                const domain = [
+                    Math.max(xScale.domain()[0], yScale.domain()[0]),
+                    Math.min(xScale.domain()[1], yScale.domain()[1])
+                ];
+                
+                this.svg.append('line')
+                    .attr('class', 'diagonal-line')
+                    .attr('x1', xScale(domain[0]))
+                    .attr('y1', yScale(domain[0]))
+                    .attr('x2', xScale(domain[1]))
+                    .attr('y2', yScale(domain[1]));
+            }
+            
+            addAxes(xScale, yScale) {
+                // X axis
+                this.svg.append('g')
+                    .attr('transform', `translate(0, ${this.height - this.margin.bottom})`)
+                    .call(d3.axisBottom(xScale));
+                
+                // Y axis
+                this.svg.append('g')
+                    .attr('transform', `translate(${this.margin.left}, 0)`)
+                    .call(d3.axisLeft(yScale));
+                
+                // Axis labels
+                this.svg.append('text')
+                    .attr('class', 'axis-label')
+                    .attr('x', this.width / 2)
+                    .attr('y', this.height - 10)
+                    .attr('text-anchor', 'middle')
+                    .text('Birth');
+                
+                this.svg.append('text')
+                    .attr('class', 'axis-label')
+                    .attr('transform', 'rotate(-90)')
+                    .attr('x', -this.height / 2)
+                    .attr('y', 20)
+                    .attr('text-anchor', 'middle')
+                    .text('Death');
+            }
+            
+            addPoints(xScale, yScale) {
+                const pointSize = +d3.select('#point-size').property('value');
+                
+                const colorScale = d => {
+                    if (d.dimension === 0) return '#3498db';
+                    if (d.dimension === 1) return '#e74c3c';
+                    return '#95a5a6';
+                };
+                
+                // Regular points
+                const finitePoints = this.filteredData.filter(d => d.persistence !== -1);
+                
+                this.svg.selectAll('.persistence-point')
+                    .data(finitePoints)
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'persistence-point')
+                    .attr('cx', d => xScale(d.x))
+                    .attr('cy', d => yScale(d.y))
+                    .attr('r', pointSize)
+                    .attr('fill', colorScale)
+                    .attr('opacity', 0.7)
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 1)
+                    .on('mouseover', (event, d) => this.showTooltip(event, d))
+                    .on('mouseout', () => this.hideTooltip());
+                
+                // Infinite persistence points (triangles)
+                const infinitePoints = this.filteredData.filter(d => d.persistence === -1);
+                
+                this.svg.selectAll('.infinite-point')
+                    .data(infinitePoints)
+                    .enter()
+                    .append('path')
+                    .attr('class', 'infinite-point')
+                    .attr('d', d3.symbol().type(d3.symbolTriangle).size(pointSize * 20))
+                    .attr('transform', d => `translate(${xScale(d.x)}, ${yScale(d.y)})`)
+                    .attr('fill', '#27ae60')
+                    .attr('opacity', 0.8)
+                    .attr('stroke', '#fff')
+                    .attr('stroke-width', 1)
+                    .on('mouseover', (event, d) => this.showTooltip(event, d))
+                    .on('mouseout', () => this.hideTooltip());
+            }
+            
+            showTooltip(event, d) {
+                const persistenceText = d.persistence === -1 ? 'Infinite' : d.persistence.toFixed(2);
+                const dimensionText = d.dimension === 0 ? 'H₀ (Component)' : 'H₁ (Cycle)';
+                
+                this.tooltip.transition()
+                    .duration(200)
+                    .style('opacity', .9);
+                
+                this.tooltip.html(`
+                    <strong>Motif:</strong> ${d.motif_id}<br/>
+                    <strong>Dimension:</strong> ${dimensionText}<br/>
+                    <strong>Birth:</strong> ${d.x.toFixed(2)}<br/>
+                    <strong>Death:</strong> ${d.y.toFixed(2)}<br/>
+                    <strong>Persistence:</strong> ${persistenceText}
+                `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+            }
+            
+            hideTooltip() {
+                this.tooltip.transition()
+                    .duration(500)
+                    .style('opacity', 0);
+            }
+            
+            showError(message) {
+                this.svg.selectAll('*').remove();
+                this.svg.append('text')
+                    .attr('x', this.width / 2)
+                    .attr('y', this.height / 2)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#e74c3c')
+                    .style('font-size', '16px')
+                    .text(message);
+            }
+            
+            showNoData() {
+                this.svg.selectAll('*').remove();
+                this.svg.append('text')
+                    .attr('x', this.width / 2)
+                    .attr('y', this.height / 2)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#95a5a6')
+                    .style('font-size', '16px')
+                    .text('No data points match the current filters');
+            }
+        }
+        
+        // Initialize the visualizer when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PersistenceDiagramVisualizer();
+        });
+    </script>
+</body>
+</html>

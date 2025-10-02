@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook Graph Motif Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .info-bar {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+            color: #1565c0;
+        }
+
+        .info-bar.default {
+            background: #f5f5f5;
+            border-color: #ddd;
+            color: #666;
+        }
+
+        .motif-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .motif-info {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+        }
+
+        .info-item {
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .weight-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .weight-controls input[type="number"] {
+            width: 60px;
+            padding: 4px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .weight-controls input:disabled,
+        .weight-controls label:has(input:disabled) {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toggle-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-right: 15px;
+        }
+
+        .toggle-btn:hover {
+            background: #5a6268;
+        }
+
+        .toggle-btn.weights-hidden {
+            background: #dc3545;
+        }
+
+        .toggle-btn.weights-hidden:hover {
+            background: #c82333;
+        }
+
+        .section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .section h3 {
+            margin-top: 0;
+            color: #495057;
+            text-align: center;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: #e9ecef;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: 8px 8px 0 0;
+            margin-right: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .tab:hover {
+            background: #dee2e6;
+        }
+
+        .tab.active {
+            background: #339af0;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Persistence Diagram Styles */
+        .persistence-container {
+            margin-top: 20px;
+        }
+
+        .persistence-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .persistence-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .persistence-legend {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .legend-symbol {
+            width: 16px;
+            height: 16px;
+        }
+
+        .legend-circle {
+            border-radius: 50%;
+        }
+
+        .legend-triangle {
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 14px solid;
+        }
+
+        /* SVG Styles */
+        .axis {
+            font-size: 12px;
+        }
+
+        .axis-label {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .grid-line {
+            stroke: #e0e0e0;
+            stroke-dasharray: 2, 2;
+            stroke-width: 1;
+        }
+
+        .diagonal-line {
+            stroke: #999;
+            stroke-width: 2;
+            stroke-dasharray: 5, 5;
+        }
+
+        .persistence-point {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .persistence-point:hover {
+            stroke-width: 3px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 250px;
+        }
+
+        .mst-node {
+            cursor: pointer;
+        }
+
+        .mst-root {
+            fill: #ff6b6b;
+            stroke: #c92a2a;
+            stroke-width: 3px;
+        }
+
+        .mst-tree-node {
+            fill: #51cf66;
+            stroke: #37b24d;
+            stroke-width: 2px;
+        }
+
+        .mst-edge {
+            stroke: #37b24d;
+            stroke-width: 3px;
+        }
+
+        .excluded-edge {
+            stroke: #ced4da;
+            stroke-width: 1px;
+            stroke-dasharray: 3, 3;
+        }
+
+        #visualization {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        .source-node {
+            fill: #ff6b6b;
+            stroke: #c92a2a;
+            stroke-width: 3px;
+        }
+
+        .neighbor-node {
+            fill: #4ecdc4;
+            stroke: #339af0;
+            stroke-width: 2px;
+        }
+
+        .source-edge {
+            stroke: #ff6b6b;
+            stroke-width: 2px;
+        }
+
+        .neighbor-edge {
+            stroke: #868e96;
+            stroke-width: 1px;
+        }
+
+        .node-label {
+            font-size: 12px;
+            font-weight: bold;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+
+        .edge-label {
+            font-size: 10px;
+            text-anchor: middle;
+            fill: #666;
+            pointer-events: none;
+        }
+
+
+
+        .legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 50%;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #339af0;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #228be6;
+        }
+
+        button:disabled {
+            background: #adb5bd;
+            cursor: not-allowed;
+        }
+
+        select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Facebook Graph Motif Visualizer</h1>
+            <p>Interactive visualization of subgraph motifs extracted from Facebook network data</p>
+        </div>
+
+        <div class="controls">
+            <div class="motif-selector">
+                <label for="motifSelect">Select Motif:</label>
+                <select id="motifSelect"></select>
+                <button id="prevBtn">← Previous</button>
+                <button id="nextBtn">Next →</button>
+                <button id="randomBtn">Random</button>
+            </div>
+
+            <div class="motif-info">
+                <div class="info-item">Source: <span id="sourceNode">-</span></div>
+                <div class="info-item">Neighbors: <span id="neighborCount">-</span></div>
+                <div class="info-item">Edges: <span id="edgeCount">-</span></div>
+                <div class="info-item">Density: <span id="density">-</span></div>
+            </div>
+
+            <div class="weight-controls">
+                <button id="toggleWeights" class="toggle-btn">Hide All Weights</button>
+                <label for="weightThreshold">Show weights ≥</label>
+                <input type="number" id="weightThreshold" value="10" min="0" max="100" step="1">
+                <label>
+                    <input type="checkbox" id="showAllWeights"> Show all weights
+                </label>
+            </div>
+        </div>
+
+        <div id="infoBar" class="info-bar default">
+            Hover over nodes or edges to see detailed information
+        </div>
+
+        <div style="position: relative;">
+            <svg id="visualization" width="1200" height="700"></svg>
+
+            <div class="legend">
+                <h4 style="margin-top: 0;">Motif Legend</h4>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6b6b; border: 3px solid #c92a2a;"></div>
+                    <span>Source Node</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4ecdc4; border: 2px solid #339af0;"></div>
+                    <span>Neighbor Node</span>
+                </div>
+                <div class="legend-item">
+                    <div style="width: 20px; height: 2px; background: #ff6b6b; margin-right: 10px;"></div>
+                    <span>Source ↔ Neighbor</span>
+                </div>
+                <div class="legend-item">
+                    <div style="width: 20px; height: 1px; background: #868e96; margin-right: 10px;"></div>
+                    <span>Neighbor ↔ Neighbor</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('mst')">Maximum Spanning Tree</button>
+                <button class="tab" onclick="switchTab('persistence')">Persistence Diagram</button>
+            </div>
+
+            <!-- MST Tab Content -->
+            <div id="mst-content" class="tab-content active">
+                <div id="mstInfo" class="info-bar default">
+                    MST information will appear here
+                </div>
+                <div style="position: relative;">
+                    <svg id="mstVisualization" width="1200" height="400"></svg>
+
+                    <div class="legend" style="top: 20px; right: 20px;">
+                        <h4 style="margin-top: 0;">MST Legend</h4>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #ff6b6b; border: 3px solid #c92a2a;"></div>
+                            <span>Root (Source)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #51cf66; border: 2px solid #37b24d;"></div>
+                            <span>MST Node</span>
+                        </div>
+                        <div class="legend-item">
+                            <div style="width: 20px; height: 3px; background: #37b24d; margin-right: 10px;"></div>
+                            <span>MST Edge</span>
+                        </div>
+                        <div class="legend-item">
+                            <div style="width: 20px; height: 1px; background: #ced4da; margin-right: 10px;"></div>
+                            <span>Excluded Edge</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Persistence Diagram Tab Content -->
+            <div id="persistence-content" class="tab-content">
+                <div class="persistence-container">
+                    <!-- Statistics -->
+                    <div class="persistence-stats" id="persistenceStats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalPoints">-</div>
+                            <div class="stat-label">Total Points</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="h0Points">-</div>
+                            <div class="stat-label">H₀ Points</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="h1Points">-</div>
+                            <div class="stat-label">H₁ Points</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="infinitePoints">-</div>
+                            <div class="stat-label">Infinite Points</div>
+                        </div>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="persistence-controls">
+                        <div class="control-group">
+                            <label for="dimensionFilter">Dimension:</label>
+                            <select id="dimensionFilter">
+                                <option value="all">All</option>
+                                <option value="0">H₀ only</option>
+                                <option value="1">H₁ only</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="pointSize">Point Size:</label>
+                            <input type="range" id="pointSize" min="3" max="8" value="5" step="1">
+                        </div>
+                        <div class="control-group">
+                            <label for="showBars">
+                                <input type="checkbox" id="showBars"> Show bars
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Info Bar -->
+                    <div id="persistenceInfo" class="info-bar default">
+                        Select a motif to view its persistence diagram
+                    </div>
+
+                    <!-- SVG Container -->
+                    <svg id="persistenceSvg" width="1200" height="500"></svg>
+
+                    <!-- Legend -->
+                    <div class="persistence-legend">
+                        <div class="legend-item">
+                            <div class="legend-symbol legend-circle"
+                                style="background-color: #3498db; border: 2px solid #2980b9;"></div>
+                            <span>H₀ Finite</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-symbol legend-circle"
+                                style="background-color: #e74c3c; border: 2px solid #c0392b;"></div>
+                            <span>H₁ Finite</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-triangle" style="border-bottom-color: #27ae60;"></div>
+                            <span>Infinite</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let motifsData = null;
+        let mstData = null;
+        let currentMotifIndex = 0;
+
+        // SVG setup
+        const svg = d3.select("#visualization");
+        const width = +svg.attr("width");
+        const height = +svg.attr("height");
+
+        // MST SVG setup
+        const mstSvg = d3.select("#mstVisualization");
+        const mstWidth = +mstSvg.attr("width");
+        const mstHeight = +mstSvg.attr("height");
+
+        // Create groups for different elements
+        const g = svg.append("g");
+        const edgesGroup = g.append("g").attr("class", "edges");
+        const nodesGroup = g.append("g").attr("class", "nodes");
+        const labelsGroup = g.append("g").attr("class", "labels");
+
+        // MST groups
+        const mstG = mstSvg.append("g");
+        const mstEdgesGroup = mstG.append("g").attr("class", "mst-edges");
+        const mstNodesGroup = mstG.append("g").attr("class", "mst-nodes");
+        const mstLabelsGroup = mstG.append("g").attr("class", "mst-labels");
+
+        // Load motifs and MST data
+        async function loadMotifs() {
+            try {
+                // Load motifs data
+                const motifsResponse = await fetch('data/facebook_motifs.json');
+                motifsData = await motifsResponse.json();
+
+                // Load pre-computed MST data
+                const mstResponse = await fetch('data/facebook_msts.json');
+                mstData = await mstResponse.json();
+
+                console.log('Loaded motifs:', motifsData.statistics);
+                console.log('Loaded MSTs:', Object.keys(mstData).length);
+
+                // Populate motif selector
+                const select = d3.select("#motifSelect");
+                select.selectAll("option")
+                    .data(motifsData.motifs)
+                    .enter()
+                    .append("option")
+                    .attr("value", (d, i) => i)
+                    .text(d => `Motif ${d.source_node} (${d.num_neighbors} neighbors)`);
+
+                // Set up event listeners
+                setupEventListeners();
+
+                // Show first motif
+                showMotif(0);
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Error loading data files. Make sure both facebook_motifs.json and facebook_msts.json are accessible.');
+            }
+        }
+
+        function setupEventListeners() {
+            d3.select("#motifSelect").on("change", function () {
+                const index = +this.value;
+                showMotif(index);
+            });
+
+            d3.select("#prevBtn").on("click", () => {
+                if (currentMotifIndex > 0) {
+                    showMotif(currentMotifIndex - 1);
+                }
+            });
+
+            d3.select("#nextBtn").on("click", () => {
+                if (currentMotifIndex < motifsData.motifs.length - 1) {
+                    showMotif(currentMotifIndex + 1);
+                }
+            });
+
+            d3.select("#randomBtn").on("click", () => {
+                const randomIndex = Math.floor(Math.random() * motifsData.motifs.length);
+                showMotif(randomIndex);
+            });
+
+            // Weight display controls
+            d3.select("#weightThreshold").on("input", () => {
+                if (currentMotifIndex >= 0) {
+                    showMotif(currentMotifIndex);
+                }
+            });
+
+            d3.select("#showAllWeights").on("change", () => {
+                if (currentMotifIndex >= 0) {
+                    showMotif(currentMotifIndex);
+                }
+            });
+
+            // Toggle all weights button
+            d3.select("#toggleWeights").on("click", function () {
+                const button = d3.select(this);
+                const isHidden = button.classed("weights-hidden");
+
+                if (isHidden) {
+                    // Show weights
+                    button
+                        .classed("weights-hidden", false)
+                        .text("Hide All Weights");
+                    d3.select("#weightThreshold").property("disabled", false);
+                    d3.select("#showAllWeights").property("disabled", false);
+                } else {
+                    // Hide weights
+                    button
+                        .classed("weights-hidden", true)
+                        .text("Show Weights");
+                    d3.select("#weightThreshold").property("disabled", true);
+                    d3.select("#showAllWeights").property("disabled", true);
+                }
+
+                if (currentMotifIndex >= 0) {
+                    showMotif(currentMotifIndex);
+                }
+            });
+        }
+
+        function showMotif(index) {
+            currentMotifIndex = index;
+            const motif = motifsData.motifs[index];
+
+            // Update UI
+            d3.select("#motifSelect").property("value", index);
+            d3.select("#sourceNode").text(motif.source_node);
+            d3.select("#neighborCount").text(motif.num_neighbors);
+            d3.select("#edgeCount").text(motif.num_edges);
+            d3.select("#density").text(motif.subgraph_density.toFixed(2));
+
+            // Update button states
+            d3.select("#prevBtn").property("disabled", index === 0);
+            d3.select("#nextBtn").property("disabled", index === motifsData.motifs.length - 1);
+
+            // Visualize motif
+            visualizeMotif(motif);
+
+            // Visualize MST
+            visualizeMST(motif);
+
+            // Update persistence diagram if data is loaded
+            if (persistenceData) {
+                updatePersistenceDiagram();
+            }
+        }
+
+        function visualizeMotif(motif) {
+            // Clear previous visualization
+            edgesGroup.selectAll("*").remove();
+            nodesGroup.selectAll("*").remove();
+            labelsGroup.selectAll("*").remove();
+
+            // Prepare nodes data
+            const nodes = [
+                { id: motif.source_node, type: 'source', x: width / 2, y: height / 2 }
+            ];
+
+            motif.neighbors.forEach(neighbor => {
+                nodes.push({ id: neighbor, type: 'neighbor' });
+            });
+
+            // Prepare edges data
+            const edges = motif.edges.map(edge => ({
+                source: edge.from,
+                target: edge.to,
+                weight: edge.weight,
+                type: edge.edge_type
+            }));
+
+            // Create force simulation
+            const simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(edges).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(25));
+
+            // Get info bar element
+            const infoBar = d3.select("#infoBar");
+
+            // Create edges with hover info
+            const edgeElements = edgesGroup.selectAll("line")
+                .data(edges)
+                .enter()
+                .append("line")
+                .attr("class", d => d.type === "source_to_neighbor" ? "source-edge" : "neighbor-edge")
+                .style("stroke-width", d => Math.max(1, Math.log(d.weight + 1)))
+                .style("cursor", "pointer")
+                .on("mouseover", function (event, d) {
+                    const edgeType = d.type === "source_to_neighbor" ? "Source ↔ Neighbor" : "Neighbor ↔ Neighbor";
+                    infoBar
+                        .attr("class", "info-bar")
+                        .html(`<strong>Edge:</strong> ${d.source.id} ↔ ${d.target.id} | <strong>Weight:</strong> ${d.weight} | <strong>Type:</strong> ${edgeType}`);
+                })
+                .on("mouseout", function () {
+                    infoBar
+                        .attr("class", "info-bar default")
+                        .html("Hover over nodes or edges to see detailed information");
+                });
+
+            // Create nodes with hover info
+            const nodeElements = nodesGroup.selectAll("circle")
+                .data(nodes)
+                .enter()
+                .append("circle")
+                .attr("r", d => d.type === 'source' ? 15 : 10)
+                .attr("class", d => d.type === 'source' ? "source-node" : "neighbor-node")
+                .style("cursor", "pointer")
+                .on("mouseover", function (event, d) {
+                    const nodeEdges = edges.filter(e => e.source.id === d.id || e.target.id === d.id);
+                    const degree = nodeEdges.length;
+                    const avgWeight = degree > 0 ? (nodeEdges.reduce((sum, e) => sum + e.weight, 0) / degree).toFixed(2) : 0;
+                    const nodeType = d.type === 'source' ? 'Source Node' : 'Neighbor Node';
+
+                    infoBar
+                        .attr("class", "info-bar")
+                        .html(`<strong>Node:</strong> ${d.id} | <strong>Type:</strong> ${nodeType} | <strong>Degree:</strong> ${degree} | <strong>Avg Weight:</strong> ${avgWeight}`);
+                })
+                .on("mouseout", function () {
+                    infoBar
+                        .attr("class", "info-bar default")
+                        .html("Hover over nodes or edges to see detailed information");
+                })
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // Create node labels
+            const labelElements = labelsGroup.selectAll("text")
+                .data(nodes)
+                .enter()
+                .append("text")
+                .attr("class", "node-label")
+                .text(d => d.id)
+                .style("font-size", d => d.type === 'source' ? "14px" : "12px");
+
+            // Create edge labels for weights based on user settings
+            const weightsHidden = d3.select("#toggleWeights").classed("weights-hidden");
+            const showAllWeights = d3.select("#showAllWeights").property("checked");
+            const weightThreshold = +d3.select("#weightThreshold").property("value");
+
+            let filteredEdges = [];
+            if (!weightsHidden) {
+                filteredEdges = showAllWeights ?
+                    edges :
+                    edges.filter(d => d.weight >= weightThreshold);
+            }
+
+            const edgeLabelElements = labelsGroup.selectAll(".edge-label")
+                .data(filteredEdges)
+                .enter()
+                .append("text")
+                .attr("class", "edge-label")
+                .text(d => d.weight.toFixed(1));
+
+            // Update positions on simulation tick
+            simulation.on("tick", () => {
+                edgeElements
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                nodeElements
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                labelElements
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y + 5);
+
+                edgeLabelElements
+                    .attr("x", d => (d.source.x + d.target.x) / 2)
+                    .attr("y", d => (d.source.y + d.target.y) / 2);
+            });
+
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+
+
+
+        function visualizeMST(motif) {
+            // Clear previous MST visualization
+            mstEdgesGroup.selectAll("*").remove();
+            mstNodesGroup.selectAll("*").remove();
+            mstLabelsGroup.selectAll("*").remove();
+
+            // Get pre-computed MST data
+            const sourceNodeKey = motif.source_node.toString();
+            const mst = mstData[sourceNodeKey];
+
+            if (!mst) {
+                console.warn(`No MST data found for source node ${motif.source_node}`);
+                const mstInfo = d3.select("#mstInfo");
+                mstInfo
+                    .attr("class", "info-bar default")
+                    .html(`No MST data available for source node ${motif.source_node}`);
+                return;
+            }
+
+            // Update MST info bar
+            const mstInfo = d3.select("#mstInfo");
+            mstInfo
+                .attr("class", "info-bar")
+                .html(`<strong>MST Total Weight:</strong> ${mst.total_weight.toFixed(1)} | <strong>MST Edges:</strong> ${mst.num_mst_edges} | <strong>Excluded Edges:</strong> ${mst.num_excluded_edges}`);
+
+            // Prepare nodes data for MST
+            const mstNodes = mst.nodes.map(nodeId => ({
+                id: nodeId,
+                type: nodeId === motif.source_node ? 'root' : 'tree_node'
+            }));
+
+            // Prepare edges data for MST
+            const mstEdgesData = mst.mst_edges.map(edge => ({
+                source: edge.from,
+                target: edge.to,
+                weight: edge.weight,
+                type: 'mst_edge'
+            }));
+
+            // Add excluded edges for visualization
+            const excludedEdgesData = mst.excluded_edges.map(edge => ({
+                source: edge.from,
+                target: edge.to,
+                weight: edge.weight,
+                type: 'excluded_edge'
+            }));
+
+            const allMstEdges = [...mstEdgesData, ...excludedEdgesData];
+
+            // Create force simulation for MST
+            const mstSimulation = d3.forceSimulation(mstNodes)
+                .force("link", d3.forceLink(allMstEdges).id(d => d.id).distance(120))
+                .force("charge", d3.forceManyBody().strength(-400))
+                .force("center", d3.forceCenter(mstWidth / 2, mstHeight / 2))
+                .force("collision", d3.forceCollide().radius(30));
+
+            // Create MST edges
+            const mstEdgeElements = mstEdgesGroup.selectAll("line")
+                .data(allMstEdges)
+                .enter()
+                .append("line")
+                .attr("class", d => d.type === "mst_edge" ? "mst-edge" : "excluded-edge")
+                .style("cursor", "pointer")
+                .on("mouseover", function (event, d) {
+                    const edgeStatus = d.type === "mst_edge" ? "Included in MST" : "Excluded from MST";
+                    mstInfo
+                        .attr("class", "info-bar")
+                        .html(`<strong>Edge:</strong> ${d.source.id} ↔ ${d.target.id} | <strong>Weight:</strong> ${d.weight} | <strong>Status:</strong> ${edgeStatus}`);
+                })
+                .on("mouseout", function () {
+                    mstInfo
+                        .attr("class", "info-bar")
+                        .html(`<strong>MST Total Weight:</strong> ${mst.total_weight.toFixed(1)} | <strong>MST Edges:</strong> ${mst.num_mst_edges} | <strong>Excluded Edges:</strong> ${mst.num_excluded_edges}`);
+                });
+
+            // Create MST nodes
+            const mstNodeElements = mstNodesGroup.selectAll("circle")
+                .data(mstNodes)
+                .enter()
+                .append("circle")
+                .attr("r", d => d.type === 'root' ? 18 : 12)
+                .attr("class", d => d.type === 'root' ? "mst-root" : "mst-tree-node")
+                .style("cursor", "pointer")
+                .on("mouseover", function (event, d) {
+                    const nodeType = d.type === 'root' ? 'Root Node (Source)' : 'MST Node';
+                    const mstNodeEdges = allMstEdges.filter(e => e.source.id === d.id || e.target.id === d.id);
+                    const mstDegree = mstNodeEdges.length;
+
+                    mstInfo
+                        .attr("class", "info-bar")
+                        .html(`<strong>Node:</strong> ${d.id} | <strong>Type:</strong> ${nodeType} | <strong>MST Degree:</strong> ${mstDegree}`);
+                })
+                .on("mouseout", function () {
+                    mstInfo
+                        .attr("class", "info-bar")
+                        .html(`<strong>MST Total Weight:</strong> ${mst.total_weight.toFixed(1)} | <strong>MST Edges:</strong> ${mst.num_mst_edges} | <strong>Excluded Edges:</strong> ${mst.num_excluded_edges}`);
+                })
+                .call(d3.drag()
+                    .on("start", mstDragstarted)
+                    .on("drag", mstDragged)
+                    .on("end", mstDragended));
+
+            // Create MST node labels
+            const mstLabelElements = mstLabelsGroup.selectAll("text")
+                .data(mstNodes)
+                .enter()
+                .append("text")
+                .attr("class", "node-label")
+                .text(d => d.id)
+                .style("font-size", d => d.type === 'root' ? "16px" : "14px")
+                .style("font-weight", "bold");
+
+            // Update positions on MST simulation tick
+            mstSimulation.on("tick", () => {
+                mstEdgeElements
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                mstNodeElements
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                mstLabelElements
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y + 6);
+            });
+
+            // MST Drag functions
+            function mstDragstarted(event, d) {
+                if (!event.active) mstSimulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function mstDragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function mstDragended(event, d) {
+                if (!event.active) mstSimulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+
+        // ===== PERSISTENCE DIAGRAM IMPLEMENTATION =====
+
+        // Global variables
+        let persistenceData = null;
+        let tooltip = null;
+
+        // Persistence SVG setup
+        const persistenceSvg = d3.select("#persistenceSvg");
+        const persistenceWidth = +persistenceSvg.attr("width");
+        const persistenceHeight = +persistenceSvg.attr("height");
+        const persistenceMargin = { top: 50, right: 50, bottom: 80, left: 80 };
+        const plotWidth = persistenceWidth - persistenceMargin.left - persistenceMargin.right;
+        const plotHeight = persistenceHeight - persistenceMargin.top - persistenceMargin.bottom;
+
+        // Tab switching function
+        function switchTab(tabName) {
+            // Update tab buttons
+            d3.selectAll('.tab').classed('active', false);
+            d3.select(`button[onclick="switchTab('${tabName}')"]`).classed('active', true);
+
+            // Update tab content
+            d3.selectAll('.tab-content').classed('active', false);
+            d3.select(`#${tabName}-content`).classed('active', true);
+
+            // Load persistence data if switching to persistence tab
+            if (tabName === 'persistence') {
+                if (!persistenceData) {
+                    loadPersistenceData();
+                } else {
+                    updatePersistenceDiagram();
+                }
+            }
+        }
+
+        // Load persistence data
+        async function loadPersistenceData() {
+            try {
+                const response = await fetch('data/persistence_coordinates.json');
+                persistenceData = await response.json();
+                console.log('Loaded persistence data:', persistenceData);
+                setupPersistenceControls();
+                updatePersistenceDiagram();
+            } catch (error) {
+                console.error('Error loading persistence data:', error);
+                showError('Failed to load persistence data');
+            }
+        }
+
+        // Setup controls
+        function setupPersistenceControls() {
+            // Create tooltip
+            tooltip = d3.select('body').append('div')
+                .attr('class', 'tooltip')
+                .style('opacity', 0);
+
+            // Add event listeners
+            d3.select('#dimensionFilter').on('change', updatePersistenceDiagram);
+            d3.select('#pointSize').on('input', updatePersistenceDiagram);
+            d3.select('#showBars').on('change', updatePersistenceDiagram);
+        }
+
+        // Main update function
+        function updatePersistenceDiagram() {
+            if (!persistenceData || currentMotifIndex < 0) {
+                showMessage('Select a motif to view its persistence diagram');
+                return;
+            }
+
+            const currentMotif = motifsData.motifs[currentMotifIndex];
+            const motifId = currentMotif.source_node.toString();
+            const motifData = persistenceData.motifs[motifId];
+
+            if (!motifData) {
+                showMessage(`No persistence data for motif ${motifId}`);
+                return;
+            }
+
+            // Update statistics
+            updateStats(motifData);
+
+            // Filter data
+            const filteredPoints = filterPoints(motifData.points);
+
+            if (filteredPoints.length === 0) {
+                showMessage('No points match current filters');
+                return;
+            }
+
+            // Draw diagram
+            drawPersistenceDiagram(filteredPoints);
+        }
+
+        // Update statistics
+        function updateStats(motifData) {
+            const stats = motifData.statistics;
+            const infiniteCount = motifData.points.filter(p => p.persistence === -1).length;
+
+            d3.select('#totalPoints').text(stats.total_points);
+            d3.select('#h0Points').text(stats.component_points);
+            d3.select('#h1Points').text(stats.cycle_points);
+            d3.select('#infinitePoints').text(infiniteCount);
+        }
+
+        // Filter points based on controls
+        function filterPoints(points) {
+            const dimensionFilter = d3.select('#dimensionFilter').property('value');
+
+            return points.filter(point => {
+                if (dimensionFilter === 'all') return true;
+                return point.dimension.toString() === dimensionFilter;
+            });
+        }
+
+        // Draw the persistence diagram
+        function drawPersistenceDiagram(points) {
+            // Clear previous content
+            persistenceSvg.selectAll('*').remove();
+
+            // Separate finite and infinite points
+            const finitePoints = points.filter(p => p.persistence !== -1);
+            const infinitePoints = points.filter(p => p.persistence === -1);
+
+            // Set up scales
+            const { xScale, yScale } = setupScales(finitePoints, infinitePoints);
+
+            // Create main group
+            const g = persistenceSvg.append('g')
+                .attr('transform', `translate(${persistenceMargin.left}, ${persistenceMargin.top})`);
+
+            // Add grid
+            addGrid(g, xScale, yScale);
+
+            // Add diagonal line
+            addDiagonal(g, xScale, yScale);
+
+            // Add axes
+            addAxes(g, xScale, yScale);
+
+            // Add points with jitter for overlaps
+            const jitteredPoints = addJitter(points);
+            addPoints(g, jitteredPoints, xScale, yScale);
+
+            // Add bars if enabled
+            if (d3.select('#showBars').property('checked')) {
+                addBars(g, jitteredPoints.filter(p => p.persistence !== -1), xScale, yScale);
+            }
+        }
+
+        // Setup scales
+        function setupScales(finitePoints, infinitePoints) {
+            let xExtent, yExtent;
+
+            if (finitePoints.length > 0) {
+                xExtent = d3.extent(finitePoints, d => d.x);
+                yExtent = d3.extent(finitePoints, d => d.y);
+            } else {
+                // Only infinite points
+                xExtent = d3.extent(infinitePoints, d => d.x);
+                yExtent = [xExtent[0], xExtent[1]];
+            }
+
+            // Add padding
+            const xPadding = (xExtent[1] - xExtent[0]) * 0.1 || 1;
+            const yPadding = (yExtent[1] - yExtent[0]) * 0.1 || 1;
+
+            const xScale = d3.scaleLinear()
+                .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+                .range([0, plotWidth]);
+
+            const yScale = d3.scaleLinear()
+                .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+                .range([plotHeight, 0]);
+
+            return { xScale, yScale };
+        }
+
+        // Add grid lines
+        function addGrid(g, xScale, yScale) {
+            // X grid
+            g.selectAll('.x-grid')
+                .data(xScale.ticks(8))
+                .enter().append('line')
+                .attr('class', 'grid-line')
+                .attr('x1', d => xScale(d))
+                .attr('x2', d => xScale(d))
+                .attr('y1', 0)
+                .attr('y2', plotHeight);
+
+            // Y grid
+            g.selectAll('.y-grid')
+                .data(yScale.ticks(8))
+                .enter().append('line')
+                .attr('class', 'grid-line')
+                .attr('x1', 0)
+                .attr('x2', plotWidth)
+                .attr('y1', d => yScale(d))
+                .attr('y2', d => yScale(d));
+        }
+
+        // Add diagonal line
+        function addDiagonal(g, xScale, yScale) {
+            const xDomain = xScale.domain();
+            const yDomain = yScale.domain();
+
+            const start = Math.max(xDomain[0], yDomain[0]);
+            const end = Math.min(xDomain[1], yDomain[1]);
+
+            if (start < end) {
+                g.append('line')
+                    .attr('class', 'diagonal-line')
+                    .attr('x1', xScale(start))
+                    .attr('y1', yScale(start))
+                    .attr('x2', xScale(end))
+                    .attr('y2', yScale(end));
+            }
+        }
+
+        // Add axes
+        function addAxes(g, xScale, yScale) {
+            // X axis
+            g.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0, ${plotHeight})`)
+                .call(d3.axisBottom(xScale));
+
+            // Y axis
+            g.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(yScale));
+
+            // Axis labels
+            g.append('text')
+                .attr('class', 'axis-label')
+                .attr('x', plotWidth / 2)
+                .attr('y', plotHeight + 50)
+                .attr('text-anchor', 'middle')
+                .text('Birth');
+
+            g.append('text')
+                .attr('class', 'axis-label')
+                .attr('transform', 'rotate(-90)')
+                .attr('x', -plotHeight / 2)
+                .attr('y', -50)
+                .attr('text-anchor', 'middle')
+                .text('Death');
+        }
+
+        // Add jitter to overlapping points
+        function addJitter(points) {
+            const jitterRadius = 0.5;
+            const positionMap = new Map();
+
+            // Group points by position
+            points.forEach(point => {
+                const key = `${point.x.toFixed(2)},${point.y.toFixed(2)}`;
+                if (!positionMap.has(key)) {
+                    positionMap.set(key, []);
+                }
+                positionMap.get(key).push(point);
+            });
+
+            const jitteredPoints = [];
+
+            // Apply jitter to overlapping points
+            positionMap.forEach(pointGroup => {
+                if (pointGroup.length === 1) {
+                    jitteredPoints.push({
+                        ...pointGroup[0],
+                        jx: pointGroup[0].x,
+                        jy: pointGroup[0].y,
+                        overlaps: 1
+                    });
+                } else {
+                    pointGroup.forEach((point, i) => {
+                        const angle = (2 * Math.PI * i) / pointGroup.length;
+                        jitteredPoints.push({
+                            ...point,
+                            jx: point.x + jitterRadius * Math.cos(angle),
+                            jy: point.y + jitterRadius * Math.sin(angle),
+                            overlaps: pointGroup.length
+                        });
+                    });
+                }
+            });
+
+            return jitteredPoints;
+        }
+
+        // Add points
+        function addPoints(g, points, xScale, yScale) {
+            const pointSize = +d3.select('#pointSize').property('value');
+
+            // Finite H0 points (circles)
+            const finiteH0 = points.filter(p => p.dimension === 0 && p.persistence !== -1);
+            g.selectAll('.h0-point')
+                .data(finiteH0)
+                .enter().append('circle')
+                .attr('class', 'persistence-point h0-point')
+                .attr('cx', d => xScale(d.jx))
+                .attr('cy', d => yScale(d.jy))
+                .attr('r', pointSize)
+                .attr('fill', '#3498db')
+                .attr('stroke', d => d.overlaps > 1 ? '#e74c3c' : '#2980b9')
+                .attr('stroke-width', d => d.overlaps > 1 ? 2 : 1)
+                .on('mouseover', (event, d) => showTooltip(event, d))
+                .on('mouseout', hideTooltip);
+
+            // Finite H1 points (squares)
+            const finiteH1 = points.filter(p => p.dimension === 1 && p.persistence !== -1);
+            g.selectAll('.h1-point')
+                .data(finiteH1)
+                .enter().append('rect')
+                .attr('class', 'persistence-point h1-point')
+                .attr('x', d => xScale(d.jx) - pointSize)
+                .attr('y', d => yScale(d.jy) - pointSize)
+                .attr('width', pointSize * 2)
+                .attr('height', pointSize * 2)
+                .attr('fill', '#e74c3c')
+                .attr('stroke', d => d.overlaps > 1 ? '#3498db' : '#c0392b')
+                .attr('stroke-width', d => d.overlaps > 1 ? 2 : 1)
+                .on('mouseover', (event, d) => showTooltip(event, d))
+                .on('mouseout', hideTooltip);
+
+            // Infinite points (triangles)
+            const infinite = points.filter(p => p.persistence === -1);
+            g.selectAll('.infinite-point')
+                .data(infinite)
+                .enter().append('path')
+                .attr('class', 'persistence-point infinite-point')
+                .attr('d', d3.symbol().type(d3.symbolTriangle).size(pointSize * 30))
+                .attr('transform', d => `translate(${xScale(d.jx)}, ${yScale(d.jx + 2)})`)
+                .attr('fill', '#27ae60')
+                .attr('stroke', '#229954')
+                .attr('stroke-width', 2)
+                .on('mouseover', (event, d) => showTooltip(event, d))
+                .on('mouseout', hideTooltip);
+
+            // Overlap count labels
+            const overlapping = points.filter(p => p.overlaps > 1);
+            const uniqueOverlaps = new Map();
+            overlapping.forEach(p => {
+                const key = `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
+                if (!uniqueOverlaps.has(key)) {
+                    uniqueOverlaps.set(key, { x: p.x, y: p.y, count: p.overlaps });
+                }
+            });
+
+            g.selectAll('.overlap-label')
+                .data(Array.from(uniqueOverlaps.values()))
+                .enter().append('text')
+                .attr('class', 'overlap-label')
+                .attr('x', d => xScale(d.x) + pointSize + 3)
+                .attr('y', d => yScale(d.y) - pointSize - 3)
+                .attr('font-size', '10px')
+                .attr('font-weight', 'bold')
+                .attr('fill', '#e74c3c')
+                .text(d => `×${d.count}`);
+        }
+
+        // Add persistence bars
+        function addBars(g, points, xScale, yScale) {
+            g.selectAll('.persistence-bar')
+                .data(points.filter(p => p.persistence > 0))
+                .enter().append('line')
+                .attr('class', 'persistence-bar')
+                .attr('x1', d => xScale(d.jx))
+                .attr('y1', d => yScale(d.jx))
+                .attr('x2', d => xScale(d.jx))
+                .attr('y2', d => yScale(d.jy))
+                .attr('stroke', d => d.dimension === 0 ? '#3498db' : '#e74c3c')
+                .attr('stroke-width', 2)
+                .attr('opacity', 0.5);
+        }
+
+        // Show tooltip
+        function showTooltip(event, d) {
+            const currentMotif = motifsData.motifs[currentMotifIndex];
+            const persistenceText = d.persistence === -1 ? 'Infinite' : d.persistence.toFixed(2);
+            const dimensionText = d.dimension === 0 ? 'H₀ (Component)' : 'H₁ (Cycle)';
+
+            // Update info bar
+            d3.select('#persistenceInfo')
+                .attr('class', 'info-bar')
+                .html(`<strong>Motif ${currentMotif.source_node}:</strong> ${dimensionText} | Birth: ${d.x.toFixed(2)} | Death: ${d.y.toFixed(2)} | Persistence: ${persistenceText}${d.overlaps > 1 ? ` | Overlaps: ${d.overlaps}` : ''}`);
+
+            // Show tooltip
+            tooltip.transition().duration(200).style('opacity', 0.9);
+            tooltip.html(`
+                <strong>Motif:</strong> ${currentMotif.source_node}<br/>
+                <strong>Type:</strong> ${dimensionText}<br/>
+                <strong>Birth:</strong> ${d.x.toFixed(2)}<br/>
+                <strong>Death:</strong> ${d.y.toFixed(2)}<br/>
+                <strong>Persistence:</strong> ${persistenceText}
+                ${d.overlaps > 1 ? `<br/><strong>Overlaps:</strong> ${d.overlaps} points` : ''}
+            `)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+        }
+
+        // Hide tooltip
+        function hideTooltip() {
+            d3.select('#persistenceInfo')
+                .attr('class', 'info-bar default')
+                .text('Hover over points to see details');
+
+            tooltip.transition().duration(500).style('opacity', 0);
+        }
+
+        // Show message
+        function showMessage(message) {
+            persistenceSvg.selectAll('*').remove();
+            persistenceSvg.append('text')
+                .attr('x', persistenceWidth / 2)
+                .attr('y', persistenceHeight / 2)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '16px')
+                .attr('fill', '#666')
+                .text(message);
+        }
+
+        // Show error
+        function showError(message) {
+            persistenceSvg.selectAll('*').remove();
+            persistenceSvg.append('text')
+                .attr('x', persistenceWidth / 2)
+                .attr('y', persistenceHeight / 2)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '16px')
+                .attr('fill', '#e74c3c')
+                .text(message);
+        }
+
+        // Make switchTab function global
+        window.switchTab = switchTab;
+
+        // Initialize
+        loadMotifs();
+    </script>
+</body>
+
+</html>
