@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wasserstein Distance Test</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <h1>Wasserstein Distance Visualizer - Debug</h1>
+    <div id="status">Loading...</div>
+    <div id="error" style="color: red; display: none;"></div>
+    
+    <div>
+        <label>Distance Threshold: <span id="thresholdValue">100</span></label><br>
+        <input type="range" id="distanceSlider" min="0" max="2300" value="100" step="1" style="width: 300px;">
+    </div>
+    
+    <div id="stats" style="margin: 20px 0; padding: 10px; background: #f0f0f0;"></div>
+    
+    <div id="pairsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;"></div>
+
+    <script>
+        let wassersteinData = {};
+        let filteredPairs = [];
+        let currentThreshold = 100;
+
+        async function init() {
+            try {
+                document.getElementById('status').textContent = 'Loading data...';
+                
+                // Try to load the data
+                const response = await fetch('data/wasserstein_distances.json');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                wassersteinData = await response.json();
+                
+                document.getElementById('status').textContent = `Loaded ${Object.keys(wassersteinData).length} distance pairs`;
+                
+                setupEventListeners();
+                updateVisualization();
+                
+            } catch (error) {
+                console.error("Error loading data:", error);
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = `Error: ${error.message}`;
+                document.getElementById('status').textContent = 'Failed to load data';
+            }
+        }
+
+        function setupEventListeners() {
+            document.getElementById('distanceSlider').addEventListener('input', function() {
+                currentThreshold = parseInt(this.value);
+                document.getElementById('thresholdValue').textContent = currentThreshold;
+                updateVisualization();
+            });
+        }
+
+        function updateVisualization() {
+            filterPairs();
+            updateStats();
+            updatePairsList();
+        }
+
+        function filterPairs() {
+            filteredPairs = [];
+            
+            for (const [key, distance] of Object.entries(wassersteinData)) {
+                if (distance > 0 && distance <= currentThreshold) {
+                    const [motif1, motif2] = key.split('-');
+                    // Only keep one direction to avoid duplicates
+                    if (parseInt(motif1) < parseInt(motif2)) {
+                        filteredPairs.push({
+                            motif1: motif1,
+                            motif2: motif2,
+                            distance: distance,
+                            key: key
+                        });
+                    }
+                }
+            }
+            
+            // Sort by distance
+            filteredPairs.sort((a, b) => a.distance - b.distance);
+        }
+
+        function updateStats() {
+            const totalPairs = Object.keys(wassersteinData).length / 2;
+            const uniqueMotifs = new Set();
+            
+            filteredPairs.forEach(pair => {
+                uniqueMotifs.add(pair.motif1);
+                uniqueMotifs.add(pair.motif2);
+            });
+
+            const distances = filteredPairs.map(p => p.distance);
+            const avgDistance = distances.length > 0 ? 
+                (distances.reduce((a, b) => a + b, 0) / distances.length).toFixed(1) : 0;
+            const minDistance = distances.length > 0 ? Math.min(...distances).toFixed(1) : 0;
+            const maxDistance = distances.length > 0 ? Math.max(...distances).toFixed(1) : 0;
+
+            document.getElementById('stats').innerHTML = `
+                <strong>Statistics:</strong><br>
+                Total Pairs: ${totalPairs.toLocaleString()}<br>
+                Filtered Pairs: ${filteredPairs.length.toLocaleString()}<br>
+                Unique Motifs: ${uniqueMotifs.size}<br>
+                Avg Distance: ${avgDistance}<br>
+                Min Distance: ${minDistance}<br>
+                Max Distance: ${maxDistance}
+            `;
+        }
+
+        function updatePairsList() {
+            const listContainer = document.getElementById('pairsList');
+            
+            if (filteredPairs.length === 0) {
+                listContainer.innerHTML = '<p>No pairs within threshold</p>';
+                return;
+            }
+
+            // Show top 20 pairs
+            const displayPairs = filteredPairs.slice(0, 20);
+            
+            let html = '<strong>Top 20 Most Similar Pairs:</strong><br>';
+            displayPairs.forEach((pair, i) => {
+                html += `${i+1}. Motifs ${pair.motif1} ↔ ${pair.motif2}: ${pair.distance.toFixed(2)}<br>`;
+            });
+            
+            if (filteredPairs.length > 20) {
+                html += `<br><em>... and ${filteredPairs.length - 20} more pairs</em>`;
+            }
+            
+            listContainer.innerHTML = html;
+        }
+
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>

@@ -63,6 +63,79 @@
             gap: 10px;
         }
 
+        .search-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        #motifSearch {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 250px;
+            outline: none;
+        }
+
+        #motifSearch:focus {
+            border-color: #339af0;
+            box-shadow: 0 0 0 2px rgba(51, 154, 240, 0.2);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .search-result-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .search-result-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .search-result-item.selected {
+            background-color: #339af0;
+            color: white;
+        }
+
+        .search-result-main {
+            font-weight: 500;
+        }
+
+        .search-result-details {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .search-result-item.selected .search-result-details {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .search-no-results {
+            padding: 12px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+
         .motif-info {
             display: flex;
             gap: 20px;
@@ -430,8 +503,12 @@
 
         <div class="controls">
             <div class="motif-selector">
-                <label for="motifSelect">Select Motif:</label>
-                <select id="motifSelect"></select>
+                <label for="motifSearch">Search Motif:</label>
+                <div class="search-container">
+                    <input type="text" id="motifSearch" placeholder="Type motif ID or neighbor count...">
+                    <select id="motifSelect" style="display: none;"></select>
+                    <div id="searchResults" class="search-results"></div>
+                </div>
                 <button id="prevBtn">← Previous</button>
                 <button id="nextBtn">Next →</button>
                 <button id="randomBtn">Random</button>
@@ -655,6 +732,113 @@
         }
 
         function setupEventListeners() {
+            // Search functionality
+            const searchInput = d3.select("#motifSearch");
+            const searchResults = d3.select("#searchResults");
+            let selectedResultIndex = -1;
+            let filteredMotifs = [];
+
+            searchInput.on("input", function() {
+                const query = this.value.toLowerCase().trim();
+                selectedResultIndex = -1;
+                
+                if (query === "") {
+                    searchResults.style("display", "none");
+                    return;
+                }
+                
+                // Filter motifs based on search query
+                filteredMotifs = motifsData.motifs.map((motif, index) => ({ motif, index }))
+                    .filter(({ motif }) => {
+                        const sourceMatch = motif.source_node.toString().includes(query);
+                        const neighborMatch = motif.num_neighbors.toString().includes(query);
+                        const edgeMatch = motif.num_edges.toString().includes(query);
+                        const densityMatch = motif.subgraph_density.toFixed(2).includes(query);
+                        return sourceMatch || neighborMatch || edgeMatch || densityMatch;
+                    })
+                    .slice(0, 10); // Limit to 10 results
+                
+                displaySearchResults(filteredMotifs);
+            });
+
+            searchInput.on("keydown", function(event) {
+                if (searchResults.style("display") === "none") return;
+                
+                switch(event.key) {
+                    case "ArrowDown":
+                        event.preventDefault();
+                        selectedResultIndex = Math.min(selectedResultIndex + 1, filteredMotifs.length - 1);
+                        updateSelectedResult();
+                        break;
+                    case "ArrowUp":
+                        event.preventDefault();
+                        selectedResultIndex = Math.max(selectedResultIndex - 1, -1);
+                        updateSelectedResult();
+                        break;
+                    case "Enter":
+                        event.preventDefault();
+                        if (selectedResultIndex >= 0 && selectedResultIndex < filteredMotifs.length) {
+                            selectMotif(filteredMotifs[selectedResultIndex].index);
+                        }
+                        break;
+                    case "Escape":
+                        searchResults.style("display", "none");
+                        selectedResultIndex = -1;
+                        break;
+                }
+            });
+
+            // Hide search results when clicking outside
+            d3.select("body").on("click", function(event) {
+                if (!event.target.closest(".search-container")) {
+                    searchResults.style("display", "none");
+                }
+            });
+
+            function displaySearchResults(results) {
+                if (results.length === 0) {
+                    searchResults.html('<div class="search-no-results">No motifs found</div>')
+                        .style("display", "block");
+                    return;
+                }
+                
+                const resultItems = searchResults.selectAll(".search-result-item")
+                    .data(results);
+                
+                resultItems.exit().remove();
+                
+                const newItems = resultItems.enter()
+                    .append("div")
+                    .attr("class", "search-result-item");
+                
+                newItems.merge(resultItems)
+                    .html(d => `
+                        <div class="search-result-main">Motif ${d.motif.source_node}</div>
+                        <div class="search-result-details">${d.motif.num_neighbors} neighbors, ${d.motif.num_edges} edges, density: ${d.motif.subgraph_density.toFixed(2)}</div>
+                    `)
+                    .on("click", function(event, d) {
+                        selectMotif(d.index);
+                    })
+                    .on("mouseenter", function(event, d) {
+                        selectedResultIndex = results.indexOf(d);
+                        updateSelectedResult();
+                    });
+                
+                searchResults.style("display", "block");
+            }
+            
+            function updateSelectedResult() {
+                searchResults.selectAll(".search-result-item")
+                    .classed("selected", (d, i) => i === selectedResultIndex);
+            }
+            
+            function selectMotif(index) {
+                searchInput.property("value", `Motif ${motifsData.motifs[index].source_node}`);
+                searchResults.style("display", "none");
+                showMotif(index);
+            }
+
+            // Original select dropdown (hidden but still functional)
             d3.select("#motifSelect").on("change", function () {
                 const index = +this.value;
                 showMotif(index);
@@ -723,6 +907,7 @@
 
             // Update UI
             d3.select("#motifSelect").property("value", index);
+            d3.select("#motifSearch").property("value", `Motif ${motif.source_node}`);
             d3.select("#sourceNode").text(motif.source_node);
             d3.select("#neighborCount").text(motif.num_neighbors);
             d3.select("#edgeCount").text(motif.num_edges);
@@ -731,6 +916,9 @@
             // Update button states
             d3.select("#prevBtn").property("disabled", index === 0);
             d3.select("#nextBtn").property("disabled", index === motifsData.motifs.length - 1);
+
+            // Hide search results
+            d3.select("#searchResults").style("display", "none");
 
             // Visualize motif
             visualizeMotif(motif);
