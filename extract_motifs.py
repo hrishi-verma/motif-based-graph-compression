@@ -14,7 +14,7 @@ def load_graph_data(filepath: str):
     try:
         edges = []
         with open(filepath, 'r') as f:
-            reader = csv.DictReader(f)
+            reader = csv.DictReader(f) 
             for row in reader:
                 edges.append({
                     'Node1': int(row['Node1']),
