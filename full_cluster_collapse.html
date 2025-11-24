@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Full Graph - All 50 Clusters Collapsed</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { margin: 0 0 10px 0; color: #333; }
+        .controls { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; }
+        button { padding: 10px 20px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #3367d6; }
+        button.secondary { background: #5f6368; }
+        #graph-container { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .node { stroke: white; stroke-width: 2; cursor: pointer; }
+        .node.regular { fill: #4285f4; }
+        .node.collapsed { fill: #f4b400; stroke: #e37400; stroke-width: 3; }
+        .link { stroke: #999; stroke-opacity: 0.3; }
+        .node-label { font-size: 8px; fill: #333; text-anchor: middle; pointer-events: none; }
+        .info-panel { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-value { font-size: 32px; font-weight: 600; color: #1565c0; }
+        .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        .status { margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌐 Full Graph - All 50 Clusters with Intelligent Collapsing</h1>
+        <p>Motifs from all clusters are collapsed with intelligent overlap handling</p>
+        <div class="controls">
+            <button onclick="collapseAllClusters()">Collapse All Clusters</button>
+            <button onclick="expandAllClusters()" class="secondary">Expand All</button>
+            <button onclick="resetGraph()" class="secondary">Reset Graph</button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label for="clusterSelect"><strong>Select Cluster:</strong></label>
+                <select id="clusterSelect" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="">-- Select a cluster --</option>
+                </select>
+                <button onclick="collapseSelectedCluster()" class="secondary">Collapse Selected</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="info-panel">
+        <h3>Graph Statistics</h3>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-value" id="totalNodes">0</div><div class="stat-label">Total Nodes</div></div>
+            <div class="stat-card"><div class="stat-value" id="visibleNodes">0</div><div class="stat-label">Visible Nodes</div></div>
+            <div class="stat-card"><div class="stat-value" id="collapsedStructures">0</div><div class="stat-label">Collapsed Structures</div></div>
+            <div class="stat-card"><div class="stat-value" id="compressionRatio">0%</div><div class="stat-label">Compression Ratio</div></div>
+        </div>
+        <div class="status" id="status">Loading data...</div>
+    </div>
+    
+    <div id="graph-container">
+        <svg id="graph" width="1400" height="900"></svg>
+    </div>
+
+    <script>
+        // Full Cluster Collapse - JavaScript
+        let graphData = null;
+        let motifData = null;
+        let clusterData = null;
+        let collapsedMotifs = new Set();
+        let collapsedNodes = new Set();
+        let motifToCluster = new Map();
+
+        let simulation = null;
+        let svg = d3.select("#graph");
+        let g = svg.append("g");
+
+        // Add zoom
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+        svg.call(zoom);
+
+        async function loadData() {
+            try {
+                updateStatus('Loading graph data...', 'blue');
+                
+                const [graph, msts, clusters] = await Promise.all([
+                    d3.csv('facebook_weighted_filtered.csv'),
+                    d3.json('data/facebook_msts.json'),
+                    d3.json('data/agglomerative_50_cluster_groups.json')
+                ]);
+                
+                // Build graph
+                const nodes = new Set();
+                const links = [];
+                
+                graph.forEach(row => {
+                    const source = parseInt(row.Node1);
+                    const target = parseInt(row.Node2);
+                    const weight = parseFloat(row.Weight);
+                    
+                    nodes.add(source);
+                    nodes.add(target);
+                    links.push({ source, target, weight });
+                });
+                
+                graphData = {
+                    nodes: Array.from(nodes).map(id => ({ id, type: 'regular' })),
+                    links: links
+                };
+                
+                motifData = msts;
+                clusterData = clusters;
+                
+                // Build motif to cluster mapping
+                Object.keys(clusters).forEach(clusterKey => {
+                    const cluster = clusters[clusterKey];
+                    cluster.motifs.forEach(motifId => {
+                        motifToCluster.set(motifId, clusterKey);
+                    });
+                });
+                
+                // Populate cluster dropdown
+                populateClusterDropdown();
+                
+                updateStats();
+                updateStatus('Loaded ' + graphData.nodes.length + ' nodes, ' + graphData.links.length + ' edges, ' + Object.keys(clusters).length + ' clusters. Select a cluster to collapse.', 'green');
+                
+                drawGraph();
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                updateStatus('Error loading data: ' + error.message, 'red');
+            }
+        }
+
+        function populateClusterDropdown() {
+            const select = document.getElementById('clusterSelect');
+            
+            // Sort clusters by number
+            const sortedClusters = Object.keys(clusterData).sort((a, b) => {
+                return parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]);
+            });
+            
+            sortedClusters.forEach(clusterKey => {
+                const cluster = clusterData[clusterKey];
+                const clusterNum = clusterKey.split('_')[1];
+                const option = document.createElement('option');
+                option.value = clusterKey;
+                option.textContent = 'Cluster ' + clusterNum + ' (' + cluster.size + ' motifs)';
+                select.appendChild(option);
+            });
+        }
+        
+        function collapseSelectedCluster() {
+            const select = document.getElementById('clusterSelect');
+            const clusterKey = select.value;
+            
+            if (!clusterKey) {
+                updateStatus('Please select a cluster first', 'orange');
+                return;
+            }
+            
+            const cluster = clusterData[clusterKey];
+            const clusterNum = clusterKey.split('_')[1];
+            
+            updateStatus('Collapsing Cluster ' + clusterNum + ' (' + cluster.size + ' motifs)...', 'blue');
+            console.log('=== COLLAPSING CLUSTER ' + clusterNum + ' ===');
+            
+            // Clear previous collapses
+            collapsedMotifs.clear();
+            collapsedNodes.clear();
+            
+            let fullyCollapsed = 0;
+            let partiallyCollapsed = 0;
+            let merged = 0;
+            
+            cluster.motifs.forEach((motifId, index) => {
+                const mst = motifData[motifId.toString()];
+                if (!mst) return;
+                
+                const sourceNode = mst.source_node;
+                const motifNodes = new Set(mst.nodes);
+                
+                console.log('Processing Motif ' + motifId + ' (source: ' + sourceNode + ', nodes: ' + mst.nodes.length + ')');
+                
+                const sourceAlreadyCollapsed = collapsedNodes.has(sourceNode);
+                
+                if (sourceAlreadyCollapsed) {
+                    let uniqueCount = 0;
+                    motifNodes.forEach(node => {
+                        if (!collapsedNodes.has(node)) {
+                            collapsedNodes.add(node);
+                            uniqueCount++;
+                        }
+                    });
+                    console.log('  → Source already collapsed. Added ' + uniqueCount + ' unique nodes.');
+                    merged++;
+                } else {
+                    let sharedCount = 0;
+                    let uniqueCount = 0;
+                    
+                    motifNodes.forEach(node => {
+                        if (collapsedNodes.has(node)) {
+                            sharedCount++;
+                        } else {
+                            uniqueCount++;
+                        }
+                    });
+                    
+                    collapsedMotifs.add(motifId);
+                    motifNodes.forEach(node => collapsedNodes.add(node));
+                    
+                    if (sharedCount === 0) {
+                        console.log('  → Full collapse: ' + mst.nodes.length + ' nodes');
+                        fullyCollapsed++;
+                    } else {
+                        console.log('  → Partial collapse: ' + uniqueCount + ' unique, ' + sharedCount + ' shared');
+                        partiallyCollapsed++;
+                    }
+                }
+            });
+            
+            console.log('=== CLUSTER ' + clusterNum + ' SUMMARY ===');
+            console.log('Total motifs: ' + cluster.size);
+            console.log('Fully collapsed: ' + fullyCollapsed);
+            console.log('Partially collapsed: ' + partiallyCollapsed);
+            console.log('Merged: ' + merged);
+            console.log('Collapsed structures: ' + collapsedMotifs.size);
+            console.log('Nodes hidden: ' + collapsedNodes.size);
+            
+            updateStatus('Cluster ' + clusterNum + ': Collapsed ' + cluster.size + ' motifs into ' + collapsedMotifs.size + ' structures (' + collapsedNodes.size + ' nodes hidden)', 'green');
+            updateStats();
+            drawGraph();
+        }
+        
+        function collapseAllClusters() {
+            updateStatus('Collapsing all clusters...', 'blue');
+            console.log('=== COLLAPSING ALL 50 CLUSTERS ===');
+            
+            collapsedMotifs.clear();
+            collapsedNodes.clear();
+            
+            let totalMotifs = 0;
+            let fullyCollapsed = 0;
+            let partiallyCollapsed = 0;
+            let merged = 0;
+            
+            // Process each cluster
+            Object.keys(clusterData).sort((a, b) => {
+                return parseInt(a.split('_')[1]) - parseInt(b.split('_')[1]);
+            }).forEach(clusterKey => {
+                const cluster = clusterData[clusterKey];
+                
+                cluster.motifs.forEach((motifId) => {
+                    totalMotifs++;
+                    const mst = motifData[motifId.toString()];
+                    if (!mst) return;
+                    
+                    const sourceNode = mst.source_node;
+                    const motifNodes = new Set(mst.nodes);
+                    
+                    const sourceAlreadyCollapsed = collapsedNodes.has(sourceNode);
+                    
+                    if (sourceAlreadyCollapsed) {
+                        let uniqueCount = 0;
+                        motifNodes.forEach(node => {
+                            if (!collapsedNodes.has(node)) {
+                                collapsedNodes.add(node);
+                                uniqueCount++;
+                            }
+                        });
+                        merged++;
+                    } else {
+                        let sharedCount = 0;
+                        motifNodes.forEach(node => {
+                            if (collapsedNodes.has(node)) {
+                                sharedCount++;
+                            }
+                        });
+                        
+                        collapsedMotifs.add(motifId);
+                        motifNodes.forEach(node => collapsedNodes.add(node));
+                        
+                        if (sharedCount === 0) {
+                            fullyCollapsed++;
+                        } else {
+                            partiallyCollapsed++;
+                        }
+                    }
+                });
+            });
+            
+            console.log('Total motifs:', totalMotifs);
+            console.log('Fully collapsed:', fullyCollapsed);
+            console.log('Partially collapsed:', partiallyCollapsed);
+            console.log('Merged:', merged);
+            console.log('Collapsed structures:', collapsedMotifs.size);
+            console.log('Nodes hidden:', collapsedNodes.size);
+            
+            updateStatus('Collapsed ' + totalMotifs + ' motifs into ' + collapsedMotifs.size + ' structures (' + collapsedNodes.size + ' nodes hidden)', 'green');
+            updateStats();
+            drawGraph();
+        }
+
+        function expandAllClusters() {
+            collapsedMotifs.clear();
+            collapsedNodes.clear();
+            updateStatus('All clusters expanded', 'blue');
+            updateStats();
+            drawGraph();
+        }
+
+        function resetGraph() {
+            expandAllClusters();
+            svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+        }
+
+        function expandMotif(motifId) {
+            collapsedMotifs.delete(motifId);
+            const mst = motifData[motifId.toString()];
+            
+            const nodesToRemove = new Set(mst.nodes);
+            nodesToRemove.forEach(node => {
+                let inOtherMotif = false;
+                for (const otherMotifId of collapsedMotifs) {
+                    const otherMst = motifData[otherMotifId.toString()];
+                    if (otherMst && otherMst.nodes.includes(node)) {
+                        inOtherMotif = true;
+                        break;
+                    }
+                }
+                if (!inOtherMotif) {
+                    collapsedNodes.delete(node);
+                }
+            });
+            
+            updateStatus('Expanded Motif ' + motifId, 'blue');
+            updateStats();
+            drawGraph();
+        }
+
+        function updateStats() {
+            if (!graphData) return;
+            
+            const totalNodes = graphData.nodes.length;
+            const hiddenNodes = collapsedNodes.size;
+            const visibleNodes = totalNodes - hiddenNodes + collapsedMotifs.size;
+            const compressionRatio = ((hiddenNodes / totalNodes) * 100).toFixed(1);
+            
+            document.getElementById('totalNodes').textContent = totalNodes;
+            document.getElementById('visibleNodes').textContent = visibleNodes;
+            document.getElementById('collapsedStructures').textContent = collapsedMotifs.size;
+            document.getElementById('compressionRatio').textContent = compressionRatio + '%';
+        }
+
+        function updateStatus(message, color) {
+            document.getElementById('status').innerHTML = '<span style="color: ' + color + ';">' + message + '</span>';
+        }
+
+        function drawGraph() {
+            if (!graphData) return;
+            
+            g.selectAll("*").remove();
+            
+            const visibleNodes = new Set();
+            const nodeData = [];
+            
+            graphData.nodes.forEach(node => {
+                const nodeId = node.id;
+                let isCollapsed = false;
+                
+                for (const motifId of collapsedMotifs) {
+                    const mst = motifData[motifId.toString()];
+                    if (mst && mst.nodes.includes(nodeId)) {
+                        isCollapsed = true;
+                        if (nodeId === mst.source_node) {
+                            visibleNodes.add(nodeId);
+                            nodeData.push({
+                                id: nodeId,
+                                type: 'collapsed',
+                                motifId: motifId,
+                                motifSize: mst.nodes.length,
+                                cluster: motifToCluster.get(motifId)
+                            });
+                        }
+                        break;
+                    }
+                }
+                
+                if (!isCollapsed) {
+                    visibleNodes.add(nodeId);
+                    nodeData.push({ id: nodeId, type: 'regular' });
+                }
+            });
+            
+            // Process links
+            const linkData = [];
+            const processedLinks = new Set();
+            
+            graphData.links.forEach(link => {
+                let sourceId = link.source.id || link.source;
+                let targetId = link.target.id || link.target;
+                
+                for (const motifId of collapsedMotifs) {
+                    const mst = motifData[motifId.toString()];
+                    if (mst) {
+                        if (mst.nodes.includes(sourceId) && sourceId !== mst.source_node) {
+                            sourceId = mst.source_node;
+                        }
+                        if (mst.nodes.includes(targetId) && targetId !== mst.source_node) {
+                            targetId = mst.source_node;
+                        }
+                    }
+                }
+                
+                if (sourceId === targetId) return;
+                if (!visibleNodes.has(sourceId) || !visibleNodes.has(targetId)) return;
+                
+                const linkKey = sourceId < targetId ? sourceId + '-' + targetId : targetId + '-' + sourceId;
+                
+                if (!processedLinks.has(linkKey)) {
+                    processedLinks.add(linkKey);
+                    linkData.push({ source: sourceId, target: targetId, weight: link.weight });
+                }
+            });
+            
+            // Create simulation
+            simulation = d3.forceSimulation(nodeData)
+                .force('link', d3.forceLink(linkData).id(d => d.id).distance(50))
+                .force('charge', d3.forceManyBody().strength(-50))
+                .force('center', d3.forceCenter(700, 450))
+                .force('collision', d3.forceCollide().radius(d => d.type === 'collapsed' ? 15 : 5));
+            
+            // Draw links
+            const link = g.selectAll('.link')
+                .data(linkData)
+                .enter().append('line')
+                .attr('class', 'link')
+                .attr('stroke-width', 0.5);
+            
+            // Draw nodes
+            const node = g.selectAll('.node')
+                .data(nodeData)
+                .enter().append('circle')
+                .attr('class', d => 'node ' + d.type)
+                .attr('r', d => d.type === 'collapsed' ? 12 : 3)
+                .on('click', (event, d) => {
+                    if (d.type === 'collapsed') {
+                        expandMotif(d.motifId);
+                    }
+                })
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+            
+            node.append('title')
+                .text(d => {
+                    if (d.type === 'collapsed') {
+                        return 'Motif ' + d.motifId + '\nCluster: ' + d.cluster + '\n' + d.motifSize + ' nodes\nClick to expand';
+                    }
+                    return 'Node ' + d.id;
+                });
+            
+            // Labels for collapsed nodes
+            const label = g.selectAll('.node-label')
+                .data(nodeData.filter(d => d.type === 'collapsed'))
+                .enter().append('text')
+                .attr('class', 'node-label')
+                .style('font-size', '10px')
+                .style('font-weight', 'bold')
+                .text(d => 'M' + d.motifId)
+                .attr('dy', 20);
+            
+            simulation.on('tick', () => {
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('cx', d => d.x).attr('cy', d => d.y);
+                label.attr('x', d => d.x).attr('y', d => d.y);
+            });
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>

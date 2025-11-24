@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster MST Comparison Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-top: 15px;
+        }
+        
+        select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+        }
+        
+        .cluster-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .cluster-info h2 {
+            margin: 0 0 10px 0;
+            color: #1565c0;
+        }
+        
+        .motif-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .motif-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .motif-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .motif-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .motif-title {
+            font-weight: 600;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .motif-stats {
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .motif-svg {
+            width: 100%;
+            height: 250px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        
+        .node {
+            stroke: white;
+            stroke-width: 2;
+        }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+        }
+        
+        .node-label {
+            font-size: 9px;
+            fill: #333;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        
+        .weight-label {
+            font-size: 8px;
+            fill: #666;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .stat-box {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1565c0;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌳 Cluster MST Comparison Visualizer</h1>
+        <p>Compare Maximum Spanning Trees within each cluster to verify structural similarity</p>
+        <p style="font-size: 13px; color: #666; margin-top: 8px;">
+            💡 <strong>Interactions:</strong> Drag nodes to rearrange • Scroll to zoom • Click and drag background to pan
+        </p>
+        
+        <div class="controls">
+            <label for="clusterSelect"><strong>Select Cluster:</strong></label>
+            <select id="clusterSelect"></select>
+            <button onclick="showAllClusters()" style="padding: 8px 16px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer;">Show All Clusters</button>
+        </div>
+    </div>
+    
+    <div id="loading" class="loading">
+        <h3>Loading data...</h3>
+    </div>
+    
+    <div id="content" style="display: none;"></div>
+
+    <script>
+        let clusterData = null;
+        let mstData = null;
+        
+        async function loadData() {
+            try {
+                console.log('Starting to load data...');
+                console.log('Current URL:', window.location.href);
+                
+                // Try to load cluster data
+                console.log('Loading clusters from: data/agglomerative_50_cluster_groups.json');
+                const clustersResponse = await fetch('data/agglomerative_50_cluster_groups.json');
+                if (!clustersResponse.ok) {
+                    throw new Error(`Failed to load clusters: ${clustersResponse.status} ${clustersResponse.statusText}`);
+                }
+                clusterData = await clustersResponse.json();
+                console.log('Clusters loaded:', Object.keys(clusterData).length, 'clusters');
+                
+                // Try to load MST data
+                console.log('Loading MSTs from: data/facebook_msts.json');
+                const mstsResponse = await fetch('data/facebook_msts.json');
+                if (!mstsResponse.ok) {
+                    throw new Error(`Failed to load MSTs: ${mstsResponse.status} ${mstsResponse.statusText}`);
+                }
+                mstData = await mstsResponse.json();
+                console.log('MSTs loaded:', Object.keys(mstData).length, 'MSTs');
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                
+                populateClusterSelect();
+                showCluster(0);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').innerHTML = 
+                    '<h3 style="color: red;">Error loading data</h3>' +
+                    '<p>' + error.message + '</p>' +
+                    '<p style="font-size: 12px; color: #666;">Make sure you are accessing this page through a web server (http://localhost:8000/cluster_mst_visualizer.html) and not directly from the file system (file:///).</p>' +
+                    '<p style="font-size: 12px; color: #666;">Check the browser console (F12) for more details.</p>';
+            }
+        }
+        
+        function populateClusterSelect() {
+            const select = document.getElementById('clusterSelect');
+            Object.keys(clusterData).forEach((clusterKey, index) => {
+                const cluster = clusterData[clusterKey];
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `Cluster ${index} (${cluster.size} motifs, ${cluster.percentage.toFixed(1)}%)`;
+                select.appendChild(option);
+            });
+            
+            select.addEventListener('change', (e) => {
+                showCluster(parseInt(e.target.value));
+            });
+        }
+        
+        function showCluster(clusterIndex) {
+            const clusterKey = `cluster_${clusterIndex}`;
+            const cluster = clusterData[clusterKey];
+            
+            const content = document.getElementById('content');
+            content.innerHTML = '';
+            
+            // Cluster info section
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'cluster-info';
+            
+            // Calculate cluster statistics
+            const motifIds = cluster.motifs;
+            const mstWeights = motifIds.map(id => mstData[id.toString()]?.total_weight || 0);
+            const avgWeight = mstWeights.reduce((a, b) => a + b, 0) / mstWeights.length;
+            const minWeight = Math.min(...mstWeights);
+            const maxWeight = Math.max(...mstWeights);
+            
+            const nodeCounts = motifIds.map(id => mstData[id.toString()]?.nodes.length || 0);
+            const avgNodes = nodeCounts.reduce((a, b) => a + b, 0) / nodeCounts.length;
+            
+            infoDiv.innerHTML = `
+                <h2>Cluster ${clusterIndex}</h2>
+                <p><strong>${cluster.size}</strong> motifs (${cluster.percentage.toFixed(1)}% of total)</p>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value">${avgWeight.toFixed(1)}</div>
+                        <div class="stat-label">Avg MST Weight</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${minWeight.toFixed(1)}</div>
+                        <div class="stat-label">Min MST Weight</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${maxWeight.toFixed(1)}</div>
+                        <div class="stat-label">Max MST Weight</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">${avgNodes.toFixed(1)}</div>
+                        <div class="stat-label">Avg Nodes</div>
+                    </div>
+                </div>
+            `;
+            content.appendChild(infoDiv);
+            
+            // Motif grid
+            const gridDiv = document.createElement('div');
+            gridDiv.className = 'motif-grid';
+            
+            motifIds.forEach(motifId => {
+                const motifMst = mstData[motifId.toString()];
+                if (motifMst) {
+                    const card = createMotifCard(motifId, motifMst);
+                    gridDiv.appendChild(card);
+                }
+            });
+            
+            content.appendChild(gridDiv);
+        }
+        
+        function createMotifCard(motifId, motifMst) {
+            const card = document.createElement('div');
+            card.className = 'motif-card';
+            
+            const header = document.createElement('div');
+            header.className = 'motif-header';
+            header.innerHTML = `
+                <div class="motif-title">Motif ${motifId}</div>
+                <div class="motif-stats">
+                    ${motifMst.nodes.length} nodes<br>
+                    ${motifMst.num_mst_edges} edges<br>
+                    Weight: ${motifMst.total_weight.toFixed(1)}
+                </div>
+            `;
+            card.appendChild(header);
+            
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('class', 'motif-svg');
+            card.appendChild(svg);
+            
+            // Draw MST
+            drawMST(svg, motifMst);
+            
+            return card;
+        }
+        
+        function drawMST(svgElement, motifMst) {
+            const svg = d3.select(svgElement);
+            const width = 280;
+            const height = 250;
+            
+            svg.attr('viewBox', `0 0 ${width} ${height}`);
+            
+            const g = svg.append('g');
+            
+            // Add zoom behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.5, 3])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            
+            svg.call(zoom);
+            
+            // Prepare nodes and links
+            const nodes = motifMst.nodes.map(id => ({ id: id }));
+            const links = motifMst.mst_edges.map(edge => ({
+                source: edge.from,
+                target: edge.to,
+                weight: edge.weight
+            }));
+            
+            // Create force simulation
+            const simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(links).id(d => d.id).distance(40))
+                .force('charge', d3.forceManyBody().strength(-80))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(15));
+            
+            // Draw links
+            const link = g.selectAll('.link')
+                .data(links)
+                .enter().append('line')
+                .attr('class', 'link')
+                .attr('stroke-width', d => Math.max(1, Math.min(3, d.weight / 5)));
+            
+            // Draw weight labels on edges
+            const weightLabel = g.selectAll('.weight-label')
+                .data(links)
+                .enter().append('text')
+                .attr('class', 'weight-label')
+                .text(d => d.weight.toFixed(0));
+            
+            // Draw nodes
+            const node = g.selectAll('.node')
+                .data(nodes)
+                .enter().append('circle')
+                .attr('class', 'node')
+                .attr('r', d => d.id === motifMst.source_node ? 6 : 4)
+                .attr('fill', d => d.id === motifMst.source_node ? '#f44336' : '#4285f4')
+                .style('cursor', 'grab')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+            
+            // Draw node labels
+            const nodeLabel = g.selectAll('.node-label')
+                .data(nodes)
+                .enter().append('text')
+                .attr('class', 'node-label')
+                .text(d => d.id)
+                .style('pointer-events', 'none');
+            
+            // Add tooltip on hover
+            node.append('title')
+                .text(d => `Node ${d.id}${d.id === motifMst.source_node ? ' (source)' : ''}`);
+            
+            // Update positions on simulation tick
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+                
+                weightLabel
+                    .attr('x', d => (d.source.x + d.target.x) / 2)
+                    .attr('y', d => (d.source.y + d.target.y) / 2);
+                
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+                
+                nodeLabel
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y - 10);
+            });
+            
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+                d3.select(this).style('cursor', 'grabbing');
+            }
+            
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+                d3.select(this).style('cursor', 'grab');
+            }
+        }
+        
+        function showAllClusters() {
+            const content = document.getElementById('content');
+            content.innerHTML = '<h2 style="padding: 20px;">Showing all clusters...</h2>';
+            
+            Object.keys(clusterData).forEach((clusterKey, index) => {
+                const cluster = clusterData[clusterKey];
+                
+                const section = document.createElement('div');
+                section.style.marginBottom = '40px';
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'cluster-info';
+                
+                const motifIds = cluster.motifs;
+                const mstWeights = motifIds.map(id => mstData[id.toString()]?.total_weight || 0);
+                const avgWeight = mstWeights.reduce((a, b) => a + b, 0) / mstWeights.length;
+                
+                infoDiv.innerHTML = `
+                    <h2>Cluster ${index}</h2>
+                    <p><strong>${cluster.size}</strong> motifs (${cluster.percentage.toFixed(1)}%) | Avg MST Weight: ${avgWeight.toFixed(1)}</p>
+                `;
+                section.appendChild(infoDiv);
+                
+                const gridDiv = document.createElement('div');
+                gridDiv.className = 'motif-grid';
+                
+                // Limit to first 20 motifs for performance
+                const displayMotifs = motifIds.slice(0, 20);
+                displayMotifs.forEach(motifId => {
+                    const motifMst = mstData[motifId.toString()];
+                    if (motifMst) {
+                        const card = createMotifCard(motifId, motifMst);
+                        gridDiv.appendChild(card);
+                    }
+                });
+                
+                if (motifIds.length > 20) {
+                    const moreDiv = document.createElement('div');
+                    moreDiv.style.padding = '20px';
+                    moreDiv.style.textAlign = 'center';
+                    moreDiv.style.color = '#666';
+                    moreDiv.textContent = `... and ${motifIds.length - 20} more motifs`;
+                    gridDiv.appendChild(moreDiv);
+                }
+                
+                section.appendChild(gridDiv);
+                content.appendChild(section);
+            });
+        }
+        
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html>
