@@ -1,120 +1,86 @@
 # GitHub Pages Deployment Guide
 
+## Automatic Deployment with GitHub Actions
+
+Your repository is configured to automatically deploy to GitHub Pages using GitHub Actions whenever you push changes to the `main` branch.
+
 ## Setup Instructions
 
-### 1. Update Configuration
+### 1. Enable GitHub Pages
 
-Replace `YOUR_USERNAME` and `YOUR_REPO_NAME` in the following files:
+1. Go to your repository on GitHub: `https://github.com/hrishi-verma/motif-based-graph-compression`
+2. Click **Settings** (top menu)
+3. Click **Pages** (left sidebar under "Code and automation")
+4. Under "Build and deployment":
+   - **Source**: Select "GitHub Actions"
+5. Save (if needed)
 
-**package.json:**
-```json
-"homepage": "https://YOUR_USERNAME.github.io/YOUR_REPO_NAME"
-```
-
-**vite.config.js:**
-```javascript
-base: '/YOUR_REPO_NAME/'
-```
-
-### 2. Install Dependencies
+### 2. Push Your Code
 
 ```bash
-cd motif-react-app
-npm install
+git add .
+git commit -m "Add GitHub Actions deployment"
+git push origin main
 ```
 
-This will install the `gh-pages` package needed for deployment.
+### 3. Monitor Deployment
 
-### 3. Build and Deploy
+1. Go to the **Actions** tab in your repository
+2. You'll see the "Deploy to GitHub Pages" workflow running
+3. Wait for it to complete (green checkmark)
 
-```bash
-npm run deploy
-```
-
-This command will:
-1. Build your React app (`npm run build`)
-2. Deploy the `dist` folder to the `gh-pages` branch
-3. Push to GitHub
-
-### 4. Configure GitHub Repository
-
-1. Go to your GitHub repository
-2. Navigate to **Settings** → **Pages**
-3. Under "Source", select:
-   - Branch: `gh-pages`
-   - Folder: `/ (root)`
-4. Click **Save**
-
-### 5. Access Your Site
+### 4. Access Your Site
 
 Your site will be available at:
 ```
-https://YOUR_USERNAME.github.io/YOUR_REPO_NAME
+https://hrishi-verma.github.io/motif-based-graph-compression
 ```
 
-It may take a few minutes for the site to go live after the first deployment.
+## How It Works
 
-## Updating the Site
+The `.github/workflows/deploy.yml` file automatically:
+1. Triggers on push to `main` branch (when `motif-react-app/` changes)
+2. Installs dependencies
+3. Builds the React app
+4. Deploys to GitHub Pages
 
-Whenever you make changes:
+## Making Updates
+
+Just push your changes to the `main` branch:
 
 ```bash
-npm run deploy
+cd motif-react-app
+# Make your changes
+git add .
+git commit -m "Update feature"
+git push origin main
 ```
 
-This will rebuild and redeploy automatically.
+The site will automatically rebuild and redeploy!
 
 ## Important Notes
 
 ### Data Files
-Your data files need to be accessible. Make sure:
-- `data/` folder is in the `public/` directory, OR
-- Update data loading paths to use the correct base URL
+
+Your data files need to be accessible. Options:
+
+1. **Move to public folder:**
+   ```bash
+   mv data motif-react-app/public/data
+   ```
+
+2. **Update data loading paths** in your hooks to use:
+   ```javascript
+   const dataPath = `${import.meta.env.BASE_URL}data/filename.json`
+   ```
 
 ### Router Configuration
-The app uses React Router with BrowserRouter. For GitHub Pages, you might need to:
-- Use HashRouter instead, OR
-- Add a 404.html redirect (see below)
 
-### 404 Handling (Optional)
+The app uses BrowserRouter. For GitHub Pages, you might need to handle 404s.
 
-Create `motif-react-app/public/404.html`:
+**Option 1: Use HashRouter** (Recommended for GitHub Pages)
 
-```html
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Redirecting...</title>
-    <script>
-      sessionStorage.redirect = location.href;
-    </script>
-    <meta http-equiv="refresh" content="0;URL='/YOUR_REPO_NAME'">
-  </head>
-  <body></body>
-</html>
-```
-
-## Troubleshooting
-
-### Blank Page
-- Check browser console for errors
-- Verify `base` path in vite.config.js matches your repo name
-- Ensure all asset paths are relative
-
-### 404 on Refresh
-- Use HashRouter instead of BrowserRouter, OR
-- Implement the 404.html redirect solution above
-
-### Data Not Loading
-- Move data files to `public/data/`
-- Update data loading paths to use `import.meta.env.BASE_URL`
-
-## Alternative: Using HashRouter
-
-If you encounter routing issues, switch to HashRouter:
-
-**src/App.jsx:**
+Update `motif-react-app/src/App.jsx`:
 ```javascript
 import { HashRouter, Routes, Route, Link } from 'react-router-dom'
 
@@ -127,15 +93,70 @@ function App() {
 }
 ```
 
-With HashRouter, URLs will look like: `https://username.github.io/repo/#/motifs`
+URLs will look like: `https://hrishi-verma.github.io/motif-based-graph-compression/#/motifs`
+
+**Option 2: Add 404 redirect**
+
+Create `motif-react-app/public/404.html`:
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Redirecting...</title>
+    <script>
+      var pathSegmentsToKeep = 1;
+      var l = window.location;
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
+        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+        l.hash
+      );
+    </script>
+  </head>
+  <body></body>
+</html>
+```
 
 ## Local Testing
 
-Test the production build locally before deploying:
+Test the production build locally:
 
 ```bash
+cd motif-react-app
 npm run build
 npm run preview
 ```
 
-This will serve the built files and help catch any issues.
+Visit `http://localhost:4173` to test.
+
+## Troubleshooting
+
+### Workflow Fails
+- Check the Actions tab for error messages
+- Ensure `package-lock.json` exists (run `npm install` if not)
+- Verify Node version compatibility
+
+### Blank Page
+- Check browser console for errors
+- Verify `base` path in `vite.config.js` is correct: `/motif-based-graph-compression/`
+- Check that data files are accessible
+
+### 404 on Refresh
+- Switch to HashRouter (see above)
+- Or implement the 404.html redirect
+
+### Data Not Loading
+- Move data files to `motif-react-app/public/data/`
+- Update paths to use `import.meta.env.BASE_URL`
+
+## Manual Deployment (Alternative)
+
+If you prefer manual control, you can trigger deployment manually:
+
+1. Go to **Actions** tab
+2. Select "Deploy to GitHub Pages" workflow
+3. Click "Run workflow"
+4. Select branch and click "Run workflow"
