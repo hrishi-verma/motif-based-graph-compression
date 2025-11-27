@@ -26,3 +26,6 @@ package-lock.json
 dist/
 build/
 *.local
+
+# GitHub Pages
+.gh-pages/
