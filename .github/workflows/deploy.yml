@@ -28,12 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: motif-react-app/package-lock.json
 
       - name: Install dependencies
         working-directory: ./motif-react-app
-        run: npm ci
+        run: npm install
 
       - name: Build
         working-directory: ./motif-react-app
