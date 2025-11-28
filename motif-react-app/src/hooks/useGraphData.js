@@ -7,7 +7,8 @@ export function useGraphData() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetch('/facebook_weighted_filtered.csv')
+    const basePath = import.meta.env.BASE_URL
+    fetch(`${basePath}facebook_weighted_filtered.csv`)
       .then(response => response.text())
       .then(csvText => {
         const parsed = d3.csvParse(csvText)

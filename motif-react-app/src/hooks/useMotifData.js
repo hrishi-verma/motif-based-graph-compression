@@ -6,10 +6,11 @@ export function useMotifData() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    const basePath = import.meta.env.BASE_URL
     Promise.all([
-      fetch('/data/facebook_motifs.json').then(r => r.json()),
-      fetch('/data/facebook_msts.json').then(r => r.json()),
-      fetch('/data/agglomerative_50_cluster_groups.json').then(r => r.json())
+      fetch(`${basePath}data/facebook_motifs.json`).then(r => r.json()),
+      fetch(`${basePath}data/facebook_msts.json`).then(r => r.json()),
+      fetch(`${basePath}data/agglomerative_50_cluster_groups.json`).then(r => r.json())
     ])
       .then(([motifs, msts, clusters]) => {
         // Build motif to cluster mapping
