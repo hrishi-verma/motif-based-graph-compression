@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { HashRouter, Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home'
 import DataPipeline from './pages/DataPipeline'
 import MotifExplorer from './pages/MotifExplorer'
@@ -9,7 +9,7 @@ import './App.css'
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="app">
         <nav className="navbar">
           <div className="nav-brand">
@@ -36,7 +36,7 @@ function App() {
           </Routes>
         </main>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   )
 }
 
