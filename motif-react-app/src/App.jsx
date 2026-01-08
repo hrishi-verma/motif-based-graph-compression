@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Link } from 'react-router-dom'
+import { HashRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
 import Home from './pages/Home'
 import DataPipeline from './pages/DataPipeline'
 import MotifExplorer from './pages/MotifExplorer'
@@ -33,6 +33,7 @@ function App() {
             <Route path="/clusters" element={<ClusterAnalysis />} />
             <Route path="/collapse" element={<GraphCollapse />} />
             <Route path="/stats" element={<Statistics />} />
+            <Route path="*" element={<Navigate replace to="/" />} />
           </Routes>
         </main>
       </div>

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 export default function Home() {
   return (
     <div className="page">
@@ -28,13 +30,13 @@ export default function Home() {
       <div style={{ marginTop: '3rem' }}>
         <h3>Quick Start</h3>
         <ol style={{ marginTop: '1rem', marginLeft: '2rem', lineHeight: '2' }}>
-          <li>View the <a href="/pipeline">Data Pipeline</a> to understand the processing flow</li>
-          <li>Explore individual <a href="/motifs">Motifs</a> and their structures</li>
-          <li>Analyze <a href="/clusters">Clusters</a> and compare similarities</li>
-          <li>Try the <a href="/collapse">Graph Collapse</a> feature (main functionality)</li>
-          <li>View detailed <a href="/stats">Statistics</a> and analytics</li>
+          <li>View the <Link to="/pipeline">Data Pipeline</Link> to understand the processing flow</li>
+          <li>Explore individual <Link to="/motifs">Motifs</Link> and their structures</li>
+          <li>Analyze <Link to="/clusters">Clusters</Link> and compare similarities</li>
+          <li>Try the <Link to="/collapse">Graph Collapse</Link> feature (main functionality)</li>
+          <li>View detailed <Link to="/stats">Statistics</Link> and analytics</li>
         </ol>
       </div>
-    </div>
+    </div >
   )
 }
