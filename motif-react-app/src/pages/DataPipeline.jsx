@@ -1,5 +1,6 @@
 export default function DataPipeline() {
   const steps = [
+    { name: 'Raw Graph Input', file: 'facebook_weighted_filtered.csv', status: 'complete', count: '486 nodes, 4037 edges' },
     { name: 'Motif Extraction', file: 'facebook_motifs.json', status: 'complete', count: '486 motifs' },
     { name: 'MST Computation', file: 'facebook_msts.json', status: 'complete', count: '486 MSTs' },
     { name: 'Persistence Diagrams', file: 'persistence_coordinates.json', status: 'complete', count: '8,560 points' },
@@ -16,20 +17,20 @@ export default function DataPipeline() {
 
       <div style={{ marginTop: '2rem' }}>
         {steps.map((step, index) => (
-          <div key={index} style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            padding: '1.5rem', 
-            background: 'white', 
+          <div key={index} style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '1.5rem',
+            background: 'white',
             border: '1px solid #e0e0e0',
             borderRadius: '8px',
             marginBottom: '1rem'
           }}>
-            <div style={{ 
-              width: '40px', 
-              height: '40px', 
-              borderRadius: '50%', 
-              background: '#4caf50', 
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              background: '#4caf50',
               color: 'white',
               display: 'flex',
               alignItems: 'center',

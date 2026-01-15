@@ -11,7 +11,7 @@ export default function Home() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginTop: '2rem' }}>
         <div className="card">
           <h3>📊 486 Nodes</h3>
-          <p>Facebook social network graph</p>
+          <p>Root Graph: facebook_weighted_filtered.csv</p>
         </div>
         <div className="card">
           <h3>🌳 486 Motifs</h3>
