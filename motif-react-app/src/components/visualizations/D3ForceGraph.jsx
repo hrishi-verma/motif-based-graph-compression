@@ -1,11 +1,17 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 
+/**
+ * D3 Force Graph with new independent motif compression.
+ * Uses motifOwnership Map instead of iterating through collapsedMotifs.
+ * See COMPRESSION_LOGIC_SPEC.md for full documentation.
+ */
 export default function D3ForceGraph({ 
   graphData, 
   motifData, 
   collapsedMotifs, 
-  collapsedNodes,
+  motifOwnership,  // New: Map<nodeId, motifId>
+  collapsedNodes,  // Kept for backward compatibility
   onNodeClick,
   width = 1000,
   height = 700
@@ -29,35 +35,29 @@ export default function D3ForceGraph({
       })
     svg.call(zoom)
 
+    // Use motifOwnership if available, otherwise fall back to old method
+    const useNewLogic = motifOwnership && motifOwnership.size !== undefined
+
     // Filter nodes based on collapsed state
     const visibleNodes = new Set()
     const nodeData = []
-    
-    // First pass: identify which nodes belong to which collapsed motif
-    const nodeToCollapsedMotif = new Map()
-    for (const motifId of collapsedMotifs) {
-      const mst = motifData[motifId.toString()]
-      if (mst) {
-        mst.nodes.forEach(nodeId => {
-          nodeToCollapsedMotif.set(nodeId, { motifId, sourceNode: mst.source_node })
-        })
-      }
-    }
 
     graphData.nodes.forEach(node => {
       const nodeId = node.id
-      const collapsedInfo = nodeToCollapsedMotif.get(nodeId)
       
-      if (collapsedInfo) {
-        // Node is part of a collapsed motif
-        if (nodeId === collapsedInfo.sourceNode) {
-          // This is the source node - show it as collapsed
+      if (useNewLogic && motifOwnership.has(nodeId)) {
+        // NEW LOGIC: Node is owned by a collapsed motif
+        const ownerMotifId = motifOwnership.get(nodeId)
+        const ownerMst = motifData[ownerMotifId.toString()]
+        
+        if (nodeId === ownerMst.source_node) {
+          // This is a source node - show it as collapsed representative
           visibleNodes.add(nodeId)
           const nodeObj = {
             id: nodeId,
             type: 'collapsed',
-            motifId: collapsedInfo.motifId,
-            motifSize: motifData[collapsedInfo.motifId.toString()].nodes.length
+            motifId: ownerMotifId,
+            motifSize: ownerMst.nodes.length
           }
           
           // Restore previous position if available
@@ -71,9 +71,54 @@ export default function D3ForceGraph({
           
           nodeData.push(nodeObj)
         }
-        // Other nodes in collapsed motif are hidden
+        // Non-source owned nodes are hidden (not added)
+      } else if (!useNewLogic) {
+        // OLD LOGIC (fallback): Check collapsedMotifs
+        let collapsedInfo = null
+        for (const motifId of collapsedMotifs) {
+          const mst = motifData[motifId.toString()]
+          if (mst && mst.nodes.includes(nodeId)) {
+            collapsedInfo = { motifId, sourceNode: mst.source_node }
+            break
+          }
+        }
+        
+        if (collapsedInfo) {
+          if (nodeId === collapsedInfo.sourceNode) {
+            visibleNodes.add(nodeId)
+            const nodeObj = {
+              id: nodeId,
+              type: 'collapsed',
+              motifId: collapsedInfo.motifId,
+              motifSize: motifData[collapsedInfo.motifId.toString()].nodes.length
+            }
+            
+            const prevPos = nodePositionsRef.current.get(nodeId)
+            if (prevPos) {
+              nodeObj.x = prevPos.x
+              nodeObj.y = prevPos.y
+              nodeObj.vx = 0
+              nodeObj.vy = 0
+            }
+            
+            nodeData.push(nodeObj)
+          }
+        } else {
+          visibleNodes.add(nodeId)
+          const nodeObj = { id: nodeId, type: 'regular' }
+          
+          const prevPos = nodePositionsRef.current.get(nodeId)
+          if (prevPos) {
+            nodeObj.x = prevPos.x
+            nodeObj.y = prevPos.y
+            nodeObj.vx = 0
+            nodeObj.vy = 0
+          }
+          
+          nodeData.push(nodeObj)
+        }
       } else {
-        // Regular visible node
+        // NEW LOGIC: Node not owned - show as regular
         visibleNodes.add(nodeId)
         const nodeObj = { id: nodeId, type: 'regular' }
         
@@ -108,7 +153,7 @@ export default function D3ForceGraph({
       }
     })
 
-    // Process links
+    // Process links - redirect edges from hidden nodes to their owner's source node
     const linkData = []
     const processedLinks = new Set()
 
@@ -116,15 +161,34 @@ export default function D3ForceGraph({
       let sourceId = link.source.id || link.source
       let targetId = link.target.id || link.target
 
-      // Redirect to source nodes if collapsed
-      for (const motifId of collapsedMotifs) {
-        const mst = motifData[motifId.toString()]
-        if (mst) {
-          if (mst.nodes.includes(sourceId) && sourceId !== mst.source_node) {
-            sourceId = mst.source_node
+      if (useNewLogic) {
+        // NEW LOGIC: Use motifOwnership for redirection
+        if (motifOwnership.has(sourceId)) {
+          const ownerMotifId = motifOwnership.get(sourceId)
+          const ownerMst = motifData[ownerMotifId.toString()]
+          if (sourceId !== ownerMst.source_node) {
+            sourceId = ownerMst.source_node
           }
-          if (mst.nodes.includes(targetId) && targetId !== mst.source_node) {
-            targetId = mst.source_node
+        }
+        
+        if (motifOwnership.has(targetId)) {
+          const ownerMotifId = motifOwnership.get(targetId)
+          const ownerMst = motifData[ownerMotifId.toString()]
+          if (targetId !== ownerMst.source_node) {
+            targetId = ownerMst.source_node
+          }
+        }
+      } else {
+        // OLD LOGIC: Iterate through collapsedMotifs
+        for (const motifId of collapsedMotifs) {
+          const mst = motifData[motifId.toString()]
+          if (mst) {
+            if (mst.nodes.includes(sourceId) && sourceId !== mst.source_node) {
+              sourceId = mst.source_node
+            }
+            if (mst.nodes.includes(targetId) && targetId !== mst.source_node) {
+              targetId = mst.source_node
+            }
           }
         }
       }
@@ -256,7 +320,7 @@ export default function D3ForceGraph({
     return () => {
       simulation.stop()
     }
-  }, [graphData, motifData, collapsedMotifs, collapsedNodes, onNodeClick, width, height])
+  }, [graphData, motifData, collapsedMotifs, motifOwnership, collapsedNodes, onNodeClick, width, height])
 
   return (
     <svg 

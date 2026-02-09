@@ -22,7 +22,7 @@ export default function GraphCollapse() {
     return lookup
   }, [motifData])
 
-  const { collapsedMotifs, collapsedNodes, collapseCluster, expandMotif, reset } = useCollapse(mstData)
+  const { collapsedMotifs, motifOwnership, collapsedNodes, collapseCluster, expandMotif, reset } = useCollapse(mstData)
 
   const handleCollapseSelected = () => {
     if (selectedCluster === null || !motifData) return
@@ -44,8 +44,10 @@ export default function GraphCollapse() {
     if (!graphData) return null
 
     const totalNodes = graphData.nodes.length
-    const hiddenNodes = collapsedNodes.size
-    const visibleNodes = totalNodes - hiddenNodes + collapsedMotifs.size
+    const ownedNodes = motifOwnership.size
+    const sourceNodes = collapsedMotifs.size  // Each collapsed motif has 1 visible source
+    const hiddenNodes = ownedNodes - sourceNodes
+    const visibleNodes = totalNodes - hiddenNodes
     const compressionRatio = ((hiddenNodes / totalNodes) * 100).toFixed(1)
 
     return {
@@ -55,7 +57,7 @@ export default function GraphCollapse() {
       collapsedStructures: collapsedMotifs.size,
       compressionRatio
     }
-  }, [graphData, collapsedMotifs, collapsedNodes])
+  }, [graphData, collapsedMotifs, motifOwnership])
 
   if (graphLoading || motifLoading) {
     return <LoadingSpinner message="Loading graph data..." />
@@ -210,6 +212,7 @@ export default function GraphCollapse() {
             graphData={graphData}
             motifData={mstData}
             collapsedMotifs={collapsedMotifs}
+            motifOwnership={motifOwnership}
             collapsedNodes={collapsedNodes}
             onNodeClick={handleNodeClick}
             width={1000}

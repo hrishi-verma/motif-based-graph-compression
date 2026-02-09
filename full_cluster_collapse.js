@@ -1,9 +1,11 @@
 // Full Cluster Collapse - JavaScript
+// New compression logic with independent motif collapse.
+// See COMPRESSION_LOGIC_SPEC.md for full documentation.
 let graphData = null;
 let motifData = null;
 let clusterData = null;
 let collapsedMotifs = new Set();
-let collapsedNodes = new Set();
+let motifOwnership = new Map();  // nodeId -> motifId (which motif owns each node)
 let motifToCluster = new Map();
 
 let simulation = null;
@@ -76,15 +78,15 @@ async function loadData() {
 
 function collapseAllClusters() {
     updateStatus('Collapsing all clusters...', 'blue');
-    console.log('\n=== COLLAPSING ALL 50 CLUSTERS ===');
+    console.log('\n=== COLLAPSING ALL 50 CLUSTERS (New Independent Logic) ===');
     
     collapsedMotifs.clear();
-    collapsedNodes.clear();
+    motifOwnership.clear();
     
     let totalMotifs = 0;
-    let fullyCollapsed = 0;
-    let partiallyCollapsed = 0;
-    let merged = 0;
+    let extractedSources = 0;
+    let claimedNodes = 0;
+    let skippedNodes = 0;
     
     // Process each cluster
     Object.keys(clusterData).sort((a, b) => {
@@ -100,52 +102,56 @@ function collapseAllClusters() {
             const sourceNode = mst.source_node;
             const motifNodes = new Set(mst.nodes);
             
-            const sourceAlreadyCollapsed = collapsedNodes.has(sourceNode);
-            
-            if (sourceAlreadyCollapsed) {
-                let uniqueCount = 0;
-                motifNodes.forEach(node => {
-                    if (!collapsedNodes.has(node)) {
-                        collapsedNodes.add(node);
-                        uniqueCount++;
-                    }
-                });
-                merged++;
-            } else {
-                let sharedCount = 0;
-                motifNodes.forEach(node => {
-                    if (collapsedNodes.has(node)) {
-                        sharedCount++;
-                    }
-                });
-                
-                collapsedMotifs.add(motifId);
-                motifNodes.forEach(node => collapsedNodes.add(node));
-                
-                if (sharedCount === 0) {
-                    fullyCollapsed++;
-                } else {
-                    partiallyCollapsed++;
-                }
+            // ============================================
+            // STEP 1: Handle source node extraction
+            // ============================================
+            if (motifOwnership.has(sourceNode)) {
+                const previousOwner = motifOwnership.get(sourceNode);
+                // Extract: remove ownership from previous motif
+                motifOwnership.delete(sourceNode);
+                extractedSources++;
+                console.log(`  Extracted source ${sourceNode} from Motif ${previousOwner}`);
             }
+            
+            // ============================================
+            // STEP 2: Claim nodes for this motif
+            // ============================================
+            collapsedMotifs.add(motifId);
+            
+            motifNodes.forEach(node => {
+                if (node === sourceNode) {
+                    // Source node: this motif owns it
+                    motifOwnership.set(node, motifId);
+                    claimedNodes++;
+                } else {
+                    // Non-source node: only claim if not already owned
+                    if (!motifOwnership.has(node)) {
+                        motifOwnership.set(node, motifId);
+                        claimedNodes++;
+                    } else {
+                        // Already owned by another motif - leave it there
+                        skippedNodes++;
+                    }
+                }
+            });
         });
     });
     
     console.log('Total motifs:', totalMotifs);
-    console.log('Fully collapsed:', fullyCollapsed);
-    console.log('Partially collapsed:', partiallyCollapsed);
-    console.log('Merged:', merged);
     console.log('Collapsed structures:', collapsedMotifs.size);
-    console.log('Nodes hidden:', collapsedNodes.size);
+    console.log('Extracted sources:', extractedSources);
+    console.log('Claimed nodes:', claimedNodes);
+    console.log('Skipped nodes (already owned):', skippedNodes);
+    console.log('Total owned nodes:', motifOwnership.size);
     
-    updateStatus(`Collapsed ${totalMotifs} motifs into ${collapsedMotifs.size} structures (${collapsedNodes.size} nodes hidden)`, 'green');
+    updateStatus(`Collapsed ${totalMotifs} motifs into ${collapsedMotifs.size} structures (${motifOwnership.size} nodes owned)`, 'green');
     updateStats();
     drawGraph();
 }
 
 function expandAllClusters() {
     collapsedMotifs.clear();
-    collapsedNodes.clear();
+    motifOwnership.clear();
     updateStatus('All clusters expanded', 'blue');
     updateStats();
     drawGraph();
@@ -157,23 +163,21 @@ function resetGraph() {
 }
 
 function expandMotif(motifId) {
+    // Remove from collapsed set
     collapsedMotifs.delete(motifId);
-    const mst = motifData[motifId.toString()];
     
-    const nodesToRemove = new Set(mst.nodes);
-    nodesToRemove.forEach(node => {
-        let inOtherMotif = false;
-        for (const otherMotifId of collapsedMotifs) {
-            const otherMst = motifData[otherMotifId.toString()];
-            if (otherMst && otherMst.nodes.includes(node)) {
-                inOtherMotif = true;
-                break;
+    // Release nodes that this motif owns
+    const mst = motifData[motifId.toString()];
+    if (mst) {
+        let releasedCount = 0;
+        mst.nodes.forEach(node => {
+            if (motifOwnership.get(node) === motifId) {
+                motifOwnership.delete(node);
+                releasedCount++;
             }
-        }
-        if (!inOtherMotif) {
-            collapsedNodes.delete(node);
-        }
-    });
+        });
+        console.log(`Expanded Motif ${motifId}: released ${releasedCount} nodes`);
+    }
     
     updateStatus(`Expanded Motif ${motifId}`, 'blue');
     updateStats();
@@ -184,8 +188,10 @@ function updateStats() {
     if (!graphData) return;
     
     const totalNodes = graphData.nodes.length;
-    const hiddenNodes = collapsedNodes.size;
-    const visibleNodes = totalNodes - hiddenNodes + collapsedMotifs.size;
+    const ownedNodes = motifOwnership.size;
+    const sourceNodes = collapsedMotifs.size;  // Each collapsed motif has 1 visible source
+    const hiddenNodes = ownedNodes - sourceNodes;
+    const visibleNodes = totalNodes - hiddenNodes;
     const compressionRatio = ((hiddenNodes / totalNodes) * 100).toFixed(1);
     
     document.getElementById('totalNodes').textContent = totalNodes;
@@ -208,33 +214,32 @@ function drawGraph() {
     
     graphData.nodes.forEach(node => {
         const nodeId = node.id;
-        let isCollapsed = false;
         
-        for (const motifId of collapsedMotifs) {
-            const mst = motifData[motifId.toString()];
-            if (mst && mst.nodes.includes(nodeId)) {
-                isCollapsed = true;
-                if (nodeId === mst.source_node) {
-                    visibleNodes.add(nodeId);
-                    nodeData.push({
-                        id: nodeId,
-                        type: 'collapsed',
-                        motifId: motifId,
-                        motifSize: mst.nodes.length,
-                        cluster: motifToCluster.get(motifId)
-                    });
-                }
-                break;
+        if (motifOwnership.has(nodeId)) {
+            // Node is owned by a collapsed motif
+            const ownerMotifId = motifOwnership.get(nodeId);
+            const ownerMst = motifData[ownerMotifId.toString()];
+            
+            if (nodeId === ownerMst.source_node) {
+                // This is a source node - show it as collapsed representative
+                visibleNodes.add(nodeId);
+                nodeData.push({
+                    id: nodeId,
+                    type: 'collapsed',
+                    motifId: ownerMotifId,
+                    motifSize: ownerMst.nodes.length,
+                    cluster: motifToCluster.get(ownerMotifId)
+                });
             }
-        }
-        
-        if (!isCollapsed) {
+            // Non-source owned nodes are hidden (not added to visibleNodes or nodeData)
+        } else {
+            // Node is not owned by any motif - show as regular
             visibleNodes.add(nodeId);
             nodeData.push({ id: nodeId, type: 'regular' });
         }
     });
     
-    // Process links
+    // Process links - redirect edges from hidden nodes to their owner's source node
     const linkData = [];
     const processedLinks = new Set();
     
@@ -242,15 +247,21 @@ function drawGraph() {
         let sourceId = link.source.id || link.source;
         let targetId = link.target.id || link.target;
         
-        for (const motifId of collapsedMotifs) {
-            const mst = motifData[motifId.toString()];
-            if (mst) {
-                if (mst.nodes.includes(sourceId) && sourceId !== mst.source_node) {
-                    sourceId = mst.source_node;
-                }
-                if (mst.nodes.includes(targetId) && targetId !== mst.source_node) {
-                    targetId = mst.source_node;
-                }
+        // Redirect source if owned by a motif
+        if (motifOwnership.has(sourceId)) {
+            const ownerMotifId = motifOwnership.get(sourceId);
+            const ownerMst = motifData[ownerMotifId.toString()];
+            if (sourceId !== ownerMst.source_node) {
+                sourceId = ownerMst.source_node;
+            }
+        }
+        
+        // Redirect target if owned by a motif
+        if (motifOwnership.has(targetId)) {
+            const ownerMotifId = motifOwnership.get(targetId);
+            const ownerMst = motifData[ownerMotifId.toString()];
+            if (targetId !== ownerMst.source_node) {
+                targetId = ownerMst.source_node;
             }
         }
         
