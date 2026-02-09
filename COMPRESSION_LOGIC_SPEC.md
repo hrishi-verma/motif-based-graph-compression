@@ -158,7 +158,19 @@ function collapseMotif(motifId) {
 
 ---
 
-## Expansion Algorithm
+## Expansion Algorithm (Smart Expand)
+
+### Core Principle
+
+**Smart Expand** ensures that common nodes become visible when any containing motif is expanded, UNLESS the node is the source of another collapsed motif.
+
+### Rules
+
+1. **Release Owned**: Release all nodes this motif owns
+2. **Smart Release Common**: Also release nodes owned by other motifs IF:
+   - The node is in this motif's original node list
+   - The node is NOT the source of its current owner
+3. **Protect Sources**: Never release a node that is another motif's source
 
 ### Core Function: `expandMotif(motifId)`
 
@@ -170,28 +182,83 @@ function expandMotif(motifId) {
   // Remove from collapsed set
   collapsedMotifs.delete(motifId)
   
-  // Release nodes that this motif owns
-  mst.nodes.forEach(node => {
+  const myNodes = new Set(mst.nodes)
+  
+  // ============================================
+  // STEP 1: Release nodes that this motif owns
+  // ============================================
+  myNodes.forEach(node => {
     if (motifOwnership.get(node) === motifId) {
       motifOwnership.delete(node)
     }
   })
   
-  console.log(`Expanded Motif ${motifId}`)
+  // ============================================
+  // STEP 2: SMART EXPAND - Release common nodes owned by others
+  // (but only if they're NOT the source of that other motif)
+  // ============================================
+  myNodes.forEach(node => {
+    const owner = motifOwnership.get(node)
+    if (owner && owner !== motifId) {
+      const ownerMst = motifData[owner]
+      // Only release if NOT the source of that motif
+      if (ownerMst && node !== ownerMst.source_node) {
+        motifOwnership.delete(node)
+        console.log(`Smart release: node ${node} from Motif ${owner}`)
+      }
+    }
+  })
 }
 ```
 
-### Important Note for Future: Common Nodes on Expansion
+### Key Logic Breakdown
 
-When expanding a motif, nodes that were **common** but stayed with another motif will NOT be restored to the expanded motif's visualization. This is expected behavior for now.
+| Node Type | Owner | Action |
+|-----------|-------|--------|
+| In my node list | This motif | Release (becomes visible) |
+| In my node list | Other motif (not their source) | **Smart release** (becomes visible) |
+| In my node list | Other motif (IS their source) | **Protected** (stays collapsed) |
+| Not in my list | Any | Not affected |
 
-**Future Enhancement Consideration:**
-If desired, when expanding M2, we could check if any of M2's nodes are still owned by other motifs and potentially restore them. This would require:
-1. Checking each node in the expanding motif
-2. If owned by another motif that is still collapsed, decide whether to:
-   - Leave it collapsed (current plan)
-   - Force-expand that portion (complex, not recommended)
-   - Show a visual indicator that the node is still collapsed elsewhere
+### Example: Smart Expand in Action
+
+```
+M1: source=A, nodes=[A, B, C]
+M2: source=D, nodes=[D, B, E]  (B is common, not source of either)
+
+After collapse (M1 first):
+  M1 owns: A, B, C
+  M2 owns: D, E
+
+Expand M2:
+  Step 1: Release D, E (owned by M2)
+  Step 2: Check B - owned by M1, but B is NOT M1's source
+          → Smart release B!
+  Result: B, D, E visible. M1 still shows A (collapsed).
+```
+
+### Edge Case: Source Protection
+
+```
+M1: source=A, nodes=[A, B, C]
+M2: source=B, nodes=[B, E, F]  (B is source of M2)
+
+After collapse:
+  M1 owns: A, C (B was extracted by M2)
+  M2 owns: B, E, F
+
+Expand M1:
+  Step 1: Release A, C (owned by M1)
+  Step 2: Check B - owned by M2, and B IS M2's source
+          → Protected! B stays as M2's collapsed representative
+  Result: A, C visible. M2 still shows B (collapsed).
+```
+
+### Re-Collapse Behavior
+
+When re-collapsing a motif after expansion:
+- First-come-first-served: whoever collapses first claims unowned common nodes
+- This is the expected behavior - common nodes go to whoever claims them first
 
 ---
 

@@ -96,17 +96,40 @@ export function useCollapse(motifData) {
       // Remove from collapsed set
       newCollapsedMotifs.delete(motifId)
 
-      // Release nodes that this motif owns
       const mst = motifData[motifId.toString()]
       if (mst) {
-        let releasedCount = 0
-        mst.nodes.forEach(node => {
+        const myNodes = new Set(mst.nodes)
+        let releasedOwned = 0
+        let releasedCommon = 0
+
+        // ============================================
+        // STEP 1: Release nodes that this motif owns
+        // ============================================
+        myNodes.forEach(node => {
           if (newMotifOwnership.get(node) === motifId) {
             newMotifOwnership.delete(node)
-            releasedCount++
+            releasedOwned++
           }
         })
-        console.log(`Expanded Motif ${motifId}: released ${releasedCount} nodes`)
+
+        // ============================================
+        // STEP 2: SMART EXPAND - Release common nodes owned by others
+        // (but only if they're NOT the source of that other motif)
+        // ============================================
+        myNodes.forEach(node => {
+          const owner = newMotifOwnership.get(node)
+          if (owner && owner !== motifId) {
+            const ownerMst = motifData[owner.toString()]
+            // Only release if NOT the source of that motif
+            if (ownerMst && node !== ownerMst.source_node) {
+              newMotifOwnership.delete(node)
+              releasedCommon++
+              console.log(`  → Smart release: node ${node} from Motif ${owner} (common node)`)
+            }
+          }
+        })
+
+        console.log(`Expanded Motif ${motifId}: released ${releasedOwned} owned + ${releasedCommon} common nodes`)
       }
 
       return {
