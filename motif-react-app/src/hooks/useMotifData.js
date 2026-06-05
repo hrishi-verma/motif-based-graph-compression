@@ -1,16 +1,43 @@
 import { useState, useEffect } from 'react'
 
-export function useMotifData() {
+export function useMotifData(hopDistance = 1) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     const basePath = import.meta.env.BASE_URL
+
+    // Determine which data files to load based on hop distance
+    const motifsFile = hopDistance === 1
+      ? `${basePath}data/facebook_motifs.json`
+      : `${basePath}data/facebook_motifs_${hopDistance}hop.json`
+
+    const mstsFile = hopDistance === 1
+      ? `${basePath}data/facebook_msts.json`
+      : `${basePath}data/facebook_msts_${hopDistance}hop.json`
+
+    // For clustering, we use the 1-hop clusters for now (can be regenerated later)
+    const clustersFile = `${basePath}data/agglomerative_50_cluster_groups.json`
+
     Promise.all([
-      fetch(`${basePath}data/facebook_motifs.json`).then(r => r.json()),
-      fetch(`${basePath}data/facebook_msts.json`).then(r => r.json()),
-      fetch(`${basePath}data/agglomerative_50_cluster_groups.json`).then(r => r.json())
+      fetch(motifsFile).then(r => {
+        if (!r.ok) throw new Error(`Failed to load ${motifsFile}`)
+        return r.json()
+      }),
+      fetch(mstsFile).then(r => {
+        // MST file might not exist for multi-hop yet - that's OK
+        if (r.ok) return r.json()
+        console.warn(`MST file not found: ${mstsFile}, will use motif edges instead`)
+        return {}
+      }).catch(() => {
+        // If fetch fails entirely, return empty object
+        return {}
+      }),
+      fetch(clustersFile).then(r => {
+        if (!r.ok) throw new Error(`Failed to load ${clustersFile}`)
+        return r.json()
+      })
     ])
       .then(([motifs, msts, clusters]) => {
         // Build motif to cluster mapping
@@ -37,7 +64,8 @@ export function useMotifData() {
         setData({
           motifs: enrichedMotifs,
           statistics: motifs.statistics,
-          clusters: clusters
+          clusters: clusters,
+          hopDistance: hopDistance
         })
         setLoading(false)
       })
@@ -45,7 +73,7 @@ export function useMotifData() {
         setError(err.message)
         setLoading(false)
       })
-  }, [])
+  }, [hopDistance])
 
   return { data, loading, error }
 }

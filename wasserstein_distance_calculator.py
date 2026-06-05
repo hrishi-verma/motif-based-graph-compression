@@ -8,6 +8,7 @@ Simple implementation without external dependencies
 import json
 import math
 import time
+import argparse
 from itertools import combinations
 
 def load_persistence_data(filename):
@@ -236,37 +237,50 @@ def save_distance_matrix(distances, motif_ids, filename):
     
     print(f"Distance matrix saved to {matrix_filename}")
 
-def main():
+def main(hop_distance=1):
     """Main function to compute Wasserstein distances"""
-    
+
+    # Determine input/output filenames based on hop distance
+    if hop_distance == 1:
+        persistence_file = 'data/persistence_coordinates.json'
+        output_file = 'data/wasserstein_distances.json'
+    else:
+        persistence_file = f'data/persistence_coordinates_{hop_distance}hop.json'
+        output_file = f'data/wasserstein_distances_{hop_distance}hop.json'
+
     # Load persistence data
-    print("Loading persistence data...")
-    persistence_data = load_persistence_data('data/persistence_coordinates.json')
-    
-    print(f"Loaded data for {persistence_data['metadata']['total_motifs']} motifs")
-    
+    print(f"Loading persistence data from {persistence_file}...")
+    persistence_data = load_persistence_data(persistence_file)
+
+    print(f"Loaded data for {persistence_data['metadata']['total_motifs']} {hop_distance}-hop motifs")
+
     # Compute Wasserstein distances (excluding infinite persistence points)
     distances = compute_all_wasserstein_distances(
-        persistence_data, 
+        persistence_data,
         p=2,  # Not used in simple version
         include_infinite=False  # Exclude infinite persistence points for proper Wasserstein distance
     )
-    
+
     # Analyze results
     analyze_distances(distances)
-    
+
     # Save results
-    output_file = 'data/wasserstein_distances.json'
     with open(output_file, 'w') as f:
         json.dump(distances, f, indent=2)
-    
+
     print(f"\nWasserstein distances saved to {output_file}")
-    
+
     # Save distance matrix for further analysis
     motif_ids = list(persistence_data['motifs'].keys())
     save_distance_matrix(distances, motif_ids, output_file)
-    
+
     return distances
 
 if __name__ == "__main__":
-    distances = main()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Compute Wasserstein distances between persistence diagrams')
+    parser.add_argument('--hop', type=int, default=1, choices=[1, 2, 3],
+                        help='Hop distance (default: 1)')
+    args = parser.parse_args()
+
+    distances = main(hop_distance=args.hop)

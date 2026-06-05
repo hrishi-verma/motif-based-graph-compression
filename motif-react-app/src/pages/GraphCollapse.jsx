@@ -2,12 +2,14 @@ import { useState, useMemo } from 'react'
 import { useGraphData } from '../hooks/useGraphData'
 import { useMotifData } from '../hooks/useMotifData'
 import { useCollapse } from '../hooks/useCollapse'
+import { useHopStore } from '../hooks/useHopStore'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import D3ForceGraph from '../components/visualizations/D3ForceGraph'
 
 export default function GraphCollapse() {
+  const { hopDistance } = useHopStore()
   const { data: graphData, loading: graphLoading } = useGraphData()
-  const { data: motifData, loading: motifLoading } = useMotifData()
+  const { data: motifData, loading: motifLoading } = useMotifData(hopDistance)
   const [selectedCluster, setSelectedCluster] = useState(null)
 
   // Convert motif data to MST lookup
@@ -77,9 +79,9 @@ export default function GraphCollapse() {
         gap: '1.5rem'
       }}>
         <div>
-          <h2 style={{ margin: '0 0 0.5rem 0' }}>Graph Collapse</h2>
+          <h2 style={{ margin: '0 0 0.5rem 0' }}>Graph Collapse ({hopDistance}-hop)</h2>
           <p style={{ color: '#666', fontSize: '0.9rem', margin: 0 }}>
-            Intelligent motif collapsing with overlap handling
+            Intelligent motif collapsing with {hopDistance}-hop neighborhoods
           </p>
         </div>
 

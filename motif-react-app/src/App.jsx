@@ -5,6 +5,7 @@ import MotifExplorer from './pages/MotifExplorer'
 import ClusterAnalysis from './pages/ClusterAnalysis'
 import GraphCollapse from './pages/GraphCollapse'
 import Statistics from './pages/Statistics'
+import HopSelector from './components/common/HopSelector'
 import './App.css'
 
 function App() {
@@ -13,7 +14,7 @@ function App() {
       <div className="app">
         <nav className="navbar">
           <div className="nav-brand">
-            <h1>🌐 Graph Motif Compression</h1>
+            <h1>Graph Motif Compression</h1>
           </div>
           <ul className="nav-links">
             <li><Link to="/">Home</Link></li>
@@ -23,6 +24,7 @@ function App() {
             <li><Link to="/collapse">Collapse</Link></li>
             <li><Link to="/stats">Statistics</Link></li>
           </ul>
+          <HopSelector />
         </nav>
 
         <main className="main-content">

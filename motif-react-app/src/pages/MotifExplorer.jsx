@@ -1,16 +1,22 @@
 import { useState, useMemo } from 'react'
 import { useMotifData } from '../hooks/useMotifData'
+import { useHopStore } from '../hooks/useHopStore'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import MotifCard from '../components/common/MotifCard'
 import MotifFilters from '../components/common/MotifFilters'
 import MotifDetailModal from '../components/common/MotifDetailModal'
 
 export default function MotifExplorer() {
-  const { data, loading, error } = useMotifData()
+  const { hopDistance } = useHopStore()
+  const { data, loading, error } = useMotifData(hopDistance)
+
+  // Adjust size range based on hop distance
+  const maxSize = hopDistance === 1 ? 157 : hopDistance === 2 ? 220 : 300
+
   const [filters, setFilters] = useState({
     searchQuery: '',
     cluster: null,
-    sizeRange: [2, 157],
+    sizeRange: [2, maxSize],
     sortBy: 'id'
   })
   const [selectedMotif, setSelectedMotif] = useState(null)
@@ -24,7 +30,7 @@ export default function MotifExplorer() {
     setFilters({
       searchQuery: '',
       cluster: null,
-      sizeRange: [2, 157],
+      sizeRange: [2, maxSize],
       sortBy: 'id'
     })
   }
@@ -81,8 +87,8 @@ export default function MotifExplorer() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Motif Explorer</h2>
-        <p>Browse and explore all 486 motifs</p>
+        <h2>Motif Explorer ({hopDistance}-hop)</h2>
+        <p>Browse and explore {data?.motifs?.length || 0} {hopDistance}-hop motifs</p>
       </div>
 
       <MotifFilters

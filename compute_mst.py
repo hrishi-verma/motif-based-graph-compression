@@ -2,73 +2,89 @@
 """
 Compute Maximum Spanning Trees for all motifs and save to JSON.
 This pre-computes MSTs to avoid calculating them in real-time during visualization.
+
+Optimized with heap-based Prim's algorithm for better performance.
 """
 
 import json
+import argparse
+import heapq
 from collections import defaultdict
 
 def find_maximum_spanning_tree(motif):
     """
-    Find Maximum Spanning Tree using Prim's algorithm starting from source node.
-    
-    Args:
-        motif: Motif data containing source_node, neighbors, and edges
-        
-    Returns:
-        dict: MST data with nodes, edges, total_weight, and excluded_edges
+    Find Maximum Spanning Tree using optimized Prim's algorithm with heap.
+    Time complexity: O(E log V) instead of O(V^2)
     """
     source_node = motif['source_node']
     all_nodes = [source_node] + motif['neighbors']
     edges = motif['edges']
-    
+
+    if len(all_nodes) <= 1:
+        return {
+            'source_node': source_node,
+            'nodes': all_nodes,
+            'mst_edges': [],
+            'excluded_edges': edges,
+            'total_weight': 0,
+            'num_mst_edges': 0,
+            'num_excluded_edges': len(edges)
+        }
+
     # Create adjacency list with weights
     adjacency_list = defaultdict(list)
     for edge in edges:
         adjacency_list[edge['from']].append({
-            'node': edge['to'], 
+            'node': edge['to'],
             'weight': edge['weight']
         })
         adjacency_list[edge['to']].append({
-            'node': edge['from'], 
+            'node': edge['from'],
             'weight': edge['weight']
         })
-    
-    # Prim's algorithm for Maximum Spanning Tree
+
+    # Heap-based Prim's algorithm for Maximum Spanning Tree
+    # Use negative weights because heapq is a min-heap
     mst_edges = []
     visited = {source_node}
     total_weight = 0
-    
-    while len(visited) < len(all_nodes):
-        max_edge = None
-        max_weight = -1
-        
-        # Find maximum weight edge from visited to unvisited nodes
-        for visited_node in visited:
-            for neighbor in adjacency_list[visited_node]:
-                if neighbor['node'] not in visited and neighbor['weight'] > max_weight:
-                    max_weight = neighbor['weight']
-                    max_edge = {
-                        'from': visited_node,
-                        'to': neighbor['node'],
-                        'weight': neighbor['weight']
-                    }
-        
-        if max_edge:
-            mst_edges.append(max_edge)
-            visited.add(max_edge['to'])
-            total_weight += max_edge['weight']
-    
+
+    # Initialize heap with edges from source node
+    heap = []
+    for neighbor in adjacency_list[source_node]:
+        heapq.heappush(heap, (-neighbor['weight'], source_node, neighbor['node']))
+
+    while heap and len(visited) < len(all_nodes):
+        neg_weight, from_node, to_node = heapq.heappop(heap)
+
+        if to_node in visited:
+            continue
+
+        # Add edge to MST
+        visited.add(to_node)
+        mst_edges.append({
+            'from': from_node,
+            'to': to_node,
+            'weight': -neg_weight
+        })
+        total_weight += -neg_weight
+
+        # Add edges from newly visited node
+        for neighbor in adjacency_list[to_node]:
+            if neighbor['node'] not in visited:
+                heapq.heappush(heap, (-neighbor['weight'], to_node, neighbor['node']))
+
     # Find excluded edges
     excluded_edges = []
+    mst_edge_set = set()
+    for mst_edge in mst_edges:
+        mst_edge_set.add((mst_edge['from'], mst_edge['to']))
+        mst_edge_set.add((mst_edge['to'], mst_edge['from']))
+
     for edge in edges:
-        is_in_mst = any(
-            (mst_edge['from'] == edge['from'] and mst_edge['to'] == edge['to']) or
-            (mst_edge['from'] == edge['to'] and mst_edge['to'] == edge['from'])
-            for mst_edge in mst_edges
-        )
-        if not is_in_mst:
+        if (edge['from'], edge['to']) not in mst_edge_set:
             excluded_edges.append(edge)
-    
+
     return {
         'source_node': source_node,
         'nodes': all_nodes,
@@ -79,54 +95,61 @@ def find_maximum_spanning_tree(motif):
         'num_excluded_edges': len(excluded_edges)
     }
 
-def compute_all_msts():
+def compute_all_msts(hop_distance=1):
     """Compute MSTs for all motifs and save to JSON."""
-    
-    print("Loading motifs data...")
-    with open('data/facebook_motifs.json', 'r') as f:
+
+    # Determine input/output filenames based on hop distance
+    if hop_distance == 1:
+        input_file = 'data/facebook_motifs.json'
+        output_file = 'data/facebook_msts.json'
+    else:
+        input_file = f'data/facebook_motifs_{hop_distance}hop.json'
+        output_file = f'data/facebook_msts_{hop_distance}hop.json'
+
+    print(f"Loading motifs data from {input_file}...")
+    with open(input_file, 'r') as f:
         motifs_data = json.load(f)
-    
+
     motifs = motifs_data['motifs']
-    print(f"Computing MSTs for {len(motifs)} motifs...")
-    
+    print(f"Computing MSTs for {len(motifs)} {hop_distance}-hop motifs...")
+
     mst_data = {}
-    
+
     for i, motif in enumerate(motifs):
         source_node = motif['source_node']
-        
+
         # Skip motifs with only one node (no edges to form MST)
         if len(motif['neighbors']) == 0:
             print(f"Skipping motif {source_node}: no neighbors")
             continue
-        
+
         # Compute MST
         mst = find_maximum_spanning_tree(motif)
         mst_data[str(source_node)] = mst
-        
+
         # Progress indicator
         if (i + 1) % 50 == 0:
             print(f"Processed {i + 1}/{len(motifs)} motifs...")
-    
+
     # Save MST data
-    output_file = 'data/facebook_msts.json'
     with open(output_file, 'w') as f:
         json.dump(mst_data, f, indent=2)
-    
+
     print(f"\nMST computation completed!")
     print(f"Results saved to: {output_file}")
     print(f"Total MSTs computed: {len(mst_data)}")
-    
+
     # Calculate some statistics
     total_weights = [mst['total_weight'] for mst in mst_data.values()]
     avg_weight = sum(total_weights) / len(total_weights) if total_weights else 0
     max_weight = max(total_weights) if total_weights else 0
     min_weight = min(total_weights) if total_weights else 0
-    
+
     print(f"\nMST Statistics:")
     print(f"- Average MST weight: {avg_weight:.2f}")
     print(f"- Maximum MST weight: {max_weight:.2f}")
     print(f"- Minimum MST weight: {min_weight:.2f}")
-    
+
     return mst_data
 
 def verify_mst_data():
@@ -162,8 +185,15 @@ def verify_mst_data():
         return False
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Compute MSTs for motif data')
+    parser.add_argument('--hop', type=int, default=1, choices=[1, 2, 3],
+                        help='Hop distance for motif MST computation (default: 1)')
+    args = parser.parse_args()
+
     # Compute all MSTs
-    mst_data = compute_all_msts()
-    
-    # Verify the results
-    verify_mst_data()
+    mst_data = compute_all_msts(hop_distance=args.hop)
+
+    # Verify the results (only for 1-hop)
+    if args.hop == 1:
+        verify_mst_data()

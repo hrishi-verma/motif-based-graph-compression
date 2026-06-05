@@ -1,4 +1,5 @@
 import json
+import argparse
 from collections import defaultdict
 
 def load_mst_data(filename):
@@ -222,8 +223,89 @@ def plot_persistence_diagram(coordinates):
     print("\nUse the HTML visualizer to see motif-specific persistence diagrams.")
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Generate persistence diagrams from MST')
+    parser.add_argument('--hop', type=int, default=1, choices=[1, 2, 3],
+                        help='Hop distance for MST (default: 1)')
+    args = parser.parse_args()
+
+    hop = args.hop
+
+    # Determine input/output filenames based on hop distance
+    if hop == 1:
+        mst_file = 'data/facebook_msts.json'
+        output_file = 'data/persistence_coordinates.json'
+    else:
+        mst_file = f'data/facebook_msts_{hop}hop.json'
+        output_file = f'data/persistence_coordinates_{hop}hop.json'
+
+    # Update output filename in function
+    def generate_persistence_with_hop(mst_filename, output):
+        mst_data = load_mst_data(mst_filename)
+
+        coordinates = {
+            'motifs': {},
+            'metadata': {
+                'total_motifs': len(mst_data),
+                'total_points': 0,
+                'component_points': 0,
+                'cycle_points': 0,
+                'hop_distance': hop
+            }
+        }
+
+        total_points = 0
+        total_component_points = 0
+        total_cycle_points = 0
+
+        for motif_id, motif_data in mst_data.items():
+            print(f"Computing persistence for motif {motif_id}...")
+
+            persistence_points = compute_single_motif_persistence(motif_id, motif_data)
+
+            component_points = [p for p in persistence_points if p['dimension'] == 0]
+            cycle_points = [p for p in persistence_points if p['dimension'] == 1]
+
+            coordinates['motifs'][motif_id] = {
+                'source_node': motif_data['source_node'],
+                'points': [
+                    {
+                        'x': point['birth'],
+                        'y': point['death'],
+                        'dimension': point['dimension'],
+                        'persistence': point['persistence']
+                    }
+                    for point in persistence_points
+                ],
+                'statistics': {
+                    'total_points': len(persistence_points),
+                    'component_points': len(component_points),
+                    'cycle_points': len(cycle_points),
+                    'mst_edges': motif_data['num_mst_edges'],
+                    'excluded_edges': motif_data['num_excluded_edges'],
+                    'total_weight': motif_data['total_weight']
+                }
+            }
+
+            total_points += len(persistence_points)
+            total_component_points += len(component_points)
+            total_cycle_points += len(cycle_points)
+
+        coordinates['metadata']['total_points'] = total_points
+        coordinates['metadata']['component_points'] = total_component_points
+        coordinates['metadata']['cycle_points'] = total_cycle_points
+
+        with open(output, 'w') as f:
+            json.dump(coordinates, f, indent=2)
+
+        print(f"Generated persistence data for {len(mst_data)} {hop}-hop motifs")
+        print(f"Total persistence points: {total_points}")
+        print(f"Saved coordinates to {output}")
+
+        return coordinates
+
     # Generate persistence coordinates
-    coordinates = generate_persistence_coordinates('data/facebook_msts.json')
-    
+    coordinates = generate_persistence_with_hop(mst_file, output_file)
+
     # Plot the diagram
     plot_persistence_diagram(coordinates)

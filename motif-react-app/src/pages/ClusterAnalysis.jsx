@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react'
 import { useMotifData } from '../hooks/useMotifData'
+import { useHopStore } from '../hooks/useHopStore'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import ClusterSelector from '../components/controls/ClusterSelector'
 import ClusterStatsCard from '../components/common/ClusterStatsCard'
 import MSTGrid from '../components/visualizations/MSTGrid'
 
 export default function ClusterAnalysis() {
-  const { data, loading, error } = useMotifData()
+  const { hopDistance } = useHopStore()
+  const { data, loading, error } = useMotifData(hopDistance)
   const [selectedCluster, setSelectedCluster] = useState(0)
   const [comparisonClusters, setComparisonClusters] = useState([])
 
@@ -72,8 +74,8 @@ export default function ClusterAnalysis() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Cluster Analysis</h2>
-        <p>Explore and compare the 50 clusters</p>
+        <h2>Cluster Analysis ({hopDistance}-hop)</h2>
+        <p>Explore and compare clusters (using {hopDistance}-hop motif data)</p>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>

@@ -1,14 +1,16 @@
 import { useMemo } from 'react'
 import { useGraphData } from '../hooks/useGraphData'
 import { useMotifData } from '../hooks/useMotifData'
+import { useHopStore } from '../hooks/useHopStore'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import StatCard from '../components/common/StatCard'
 import MotifSizeChart from '../components/visualizations/MotifSizeChart'
 import ClusterSizeChart from '../components/visualizations/ClusterSizeChart'
 
 export default function Statistics() {
+  const { hopDistance } = useHopStore()
   const { data: graphData, loading: graphLoading } = useGraphData()
-  const { data: motifData, loading: motifLoading } = useMotifData()
+  const { data: motifData, loading: motifLoading } = useMotifData(hopDistance)
 
   const stats = useMemo(() => {
     if (!graphData || !motifData) return null
@@ -93,9 +95,9 @@ export default function Statistics() {
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ margin: '0 0 0.5rem 0' }}>Statistics Dashboard</h1>
+        <h1 style={{ margin: '0 0 0.5rem 0' }}>Statistics Dashboard ({hopDistance}-hop)</h1>
         <p style={{ color: '#666', margin: 0 }}>
-          Comprehensive analysis of graph structure, motifs, and clusters
+          Comprehensive analysis of {hopDistance}-hop motif structure and clusters
         </p>
       </div>
 
